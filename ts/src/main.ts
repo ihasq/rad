@@ -16,6 +16,9 @@ import { exportToGit } from './git/export';
 import { runStatus } from './cmd/status';
 import { runLog } from './cmd/log';
 import { runDiff } from './cmd/diff';
+import { runClone } from './cmd/clone';
+import { runPush } from './cmd/push';
+import { runPull } from './cmd/pull';
 import * as fs from 'fs';
 
 const program = new Command();
@@ -363,6 +366,49 @@ program
     }
   });
 
+program
+  .command('clone <url>')
+  .description('Clone a project from a Relay server')
+  .requiredOption('--participant <id>', 'Participant ID')
+  .requiredOption('--secret-key <key>', 'Base64 Ed25519 secret key')
+  .action(async (url, opts) => {
+    try {
+      const output = await runClone(url, opts.participant, opts.secretKey);
+      process.stdout.write(output);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('push')
+  .description('Push local operations to Relay server')
+  .action(async () => {
+    try {
+      const store = RadStore.open('.');
+      const output = await runPush(store);
+      process.stdout.write(output);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('pull')
+  .description('Pull remote operations from Relay server')
+  .action(async () => {
+    try {
+      const store = RadStore.open('.');
+      const output = await runPull(store);
+      process.stdout.write(output);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
 // stdin 読み取りヘルパー
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -391,6 +437,9 @@ Commands:
   status    Show project status
   log       Show operation log
   diff      Show diff between accepted and visible writes
+  clone     Clone a project from a Relay server
+  push      Push local operations to Relay server
+  pull      Pull remote operations from Relay server
   help      Print this message or the help of the given subcommand(s)
 
 Options:

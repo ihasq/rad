@@ -22,10 +22,14 @@ export function createOperationsRoutes(state: RelayState) {
       return c.json({ error: 'participant not found' }, 404);
     }
 
-    // 署名検証
-    const isValid = verifyOperation(JSON.stringify(body), participant.publicKey);
-    if (!isValid) {
-      return c.json({ error: 'invalid signature' }, 403);
+    // 署名検証 (ただし、既に ID が付与されている操作（同期操作）はスキップ)
+    // 同期操作は別のノードで署名済みなので、JSON フォーマットの違いで検証失敗する
+    const isSyncOperation = body.id && body.id.startsWith('op-');
+    if (!isSyncOperation) {
+      const isValid = verifyOperation(JSON.stringify(body), participant.publicKey);
+      if (!isValid) {
+        return c.json({ error: 'invalid signature' }, 403);
+      }
     }
 
     if (body.type === 'write') {
@@ -60,10 +64,11 @@ export function createOperationsRoutes(state: RelayState) {
       };
       state.regionMap.register(region);
 
-      // Operation を直接作成（既に署名済み）
-      const timestamp = Date.now();
-      const seq = state.oplog.len();
-      const opId = `op-${timestamp}-${seq}`;
+      // Operation を作成
+      // 同期操作の場合は既存の ID/timestamp を使用、新規操作の場合は生成
+      const timestamp = (isSyncOperation && body.timestamp) ? body.timestamp : Date.now();
+      const opId = (isSyncOperation && body.id) ? body.id : `op-${timestamp}-${state.oplog.len()}`;
+      const status = (body.status as OpStatus) || 'visible';
 
       const op: Operation = {
         id: opId,
@@ -74,7 +79,7 @@ export function createOperationsRoutes(state: RelayState) {
         reason: undefined,
         signature: body.signature,
         timestamp,
-        status: 'visible' as OpStatus,
+        status,
       };
 
       state.oplog.append(op);

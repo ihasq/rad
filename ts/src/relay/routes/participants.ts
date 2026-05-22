@@ -13,11 +13,11 @@ export function createParticipantsRoutes(state: RelayState) {
       return c.json({ error: 'publicKey is required' }, 400);
     }
 
-    // participantId 生成
-    const participantId = body.displayName || `participant-${Date.now()}`;
+    // participantId: リクエストから取得、なければ displayName、それもなければ生成
+    const participantId = body.participantId || body.displayName || `participant-${Date.now()}`;
 
-    // 最初の参加者は Founder
-    const isFounder = state.participants.size === 0;
+    // 最初の参加者は Founder（またはリクエストで明示的に指定）
+    const isFounder = body.isFounder !== undefined ? body.isFounder : state.participants.size === 0;
 
     const participant: Participant = {
       participantId,

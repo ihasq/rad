@@ -16,6 +16,7 @@ mod store;
 mod relay;
 mod git;
 mod cmd;
+mod remote;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -77,6 +78,18 @@ enum Commands {
     },
     /// Show diff between accepted and visible writes
     Diff,
+    /// Clone a project from a Relay server
+    Clone {
+        url: String,
+        #[arg(long)]
+        participant: String,
+        #[arg(long)]
+        secret_key: String,
+    },
+    /// Push local operations to Relay server
+    Push,
+    /// Pull remote operations from Relay server
+    Pull,
 }
 
 #[tokio::main]
@@ -410,6 +423,51 @@ async fn main() {
             match store::RadStore::open(&cwd) {
                 Ok(store) => {
                     match cmd::diff::run_diff(&store) {
+                        Ok(output) => print!("{}", output),
+                        Err(e) => {
+                            eprintln!("error: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Clone { url, participant, secret_key }) => {
+            match cmd::clone::run_clone(&url, &participant, &secret_key) {
+                Ok(output) => print!("{}", output),
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Push) => {
+            let cwd = std::env::current_dir().unwrap();
+            match store::RadStore::open(&cwd) {
+                Ok(store) => {
+                    match cmd::push::run_push(&store) {
+                        Ok(output) => print!("{}", output),
+                        Err(e) => {
+                            eprintln!("error: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Pull) => {
+            let cwd = std::env::current_dir().unwrap();
+            match store::RadStore::open(&cwd) {
+                Ok(store) => {
+                    match cmd::pull::run_pull(&store) {
                         Ok(output) => print!("{}", output),
                         Err(e) => {
                             eprintln!("error: {}", e);
