@@ -15,6 +15,8 @@ export interface CodeRegion {
 
 export type OpType = 'write' | 'approve' | 'reject';
 
+export type OpStatus = 'visible' | 'accepted' | 'rejected' | 'discarded';
+
 export interface Operation {
   readonly id: string;
   readonly participantId: string;
@@ -24,4 +26,5 @@ export interface Operation {
   readonly reason?: string;
   readonly signature: string;
   readonly timestamp: number;
+  status: OpStatus;
 }

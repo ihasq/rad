@@ -5,6 +5,8 @@ import { verifyOperation } from './verify';
 import { RegionMap } from './region';
 import { OpLog } from './oplog';
 import { handleWrite, handleChain } from './pipeline';
+import { handleAccept } from './accept';
+import { handleReject } from './reject';
 
 const program = new Command();
 program
@@ -96,16 +98,57 @@ program
     const input = await readStdin();
     const regionMap = new RegionMap();
     const oplog = new OpLog();
+    const opIds: string[] = [];
+
+    // Helper to expand @N references
+    function expandRefs(line: string): string {
+      let result = line;
+      for (let i = 0; i < opIds.length; i++) {
+        result = result.replaceAll('@' + (i + 1), opIds[i]);
+      }
+      return result;
+    }
+
     const lines = input.trim().split('\n');
     for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
+      const expanded = expandRefs(line.trim());
+      const parts = expanded.split(/\s+/);
       switch (parts[0]) {
         case 'write': {
-          console.log(handleWrite(parts, regionMap, oplog));
+          const output = handleWrite(parts, regionMap, oplog);
+          // Extract op-id from JSON output
+          try {
+            const json = JSON.parse(output);
+            if (json.id) {
+              opIds.push(json.id);
+            }
+          } catch {}
+          console.log(output);
           break;
         }
         case 'chain': {
           console.log(handleChain(parts, oplog));
+          break;
+        }
+        case 'accept': {
+          // accept <op-id> <leader> <secret-key>
+          try {
+            const result = handleAccept(parts[1], parts[2], regionMap, oplog);
+            console.log(JSON.stringify(result));
+          } catch (e) {
+            console.error('error:', (e as Error).message);
+          }
+          break;
+        }
+        case 'reject': {
+          // reject <op-id> <rejecter> <secret-key> ["reason"]
+          const reason = parts.length > 4 ? parts.slice(4).join(' ').replace(/^"|"$/g, '') : undefined;
+          try {
+            const result = handleReject(parts[1], parts[2], reason, regionMap, oplog);
+            console.log(JSON.stringify(result));
+          } catch (e) {
+            console.error('error:', (e as Error).message);
+          }
           break;
         }
         case 'region': {

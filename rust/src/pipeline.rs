@@ -1,16 +1,8 @@
-use crate::types::{CodeRegion, Operation, OpType};
+use crate::types::{CodeRegion, Operation, OpType, OpStatus};
 use crate::region::RegionMap;
 use crate::oplog::OpLog;
 use crate::sign;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-fn generate_op_id() -> String {
-    use std::time::SystemTime;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap();
-    format!("op-{}", now.as_nanos())
-}
 
 fn current_timestamp_ms() -> u64 {
     SystemTime::now()
@@ -44,8 +36,9 @@ pub fn handle_write(
     region_map.register(region); // 既存なら無視
 
     // Operation 生成 + 署名
-    let op_id = generate_op_id();
     let timestamp = current_timestamp_ms();
+    let seq = oplog.len();
+    let op_id = format!("op-{}-{}", timestamp, seq);
     let mut op = Operation {
         id: op_id.clone(),
         participant_id: participant.to_string(),
@@ -55,6 +48,7 @@ pub fn handle_write(
         reason: None,
         signature: String::new(),
         timestamp,
+        status: OpStatus::Visible,
     };
 
     // JSON 正規化 → 署名
@@ -77,14 +71,27 @@ pub fn handle_chain(parts: &[&str], oplog: &OpLog) -> String {
     let end: u32 = parts[3].parse().unwrap();
     let chain = oplog.get_chain(file, start, end);
 
+    // ステータスカウント
+    let visible_count = chain.iter().filter(|op| op.status == OpStatus::Visible).count();
+    let all_visible = visible_count == chain.len();
+
     // ヘッダ
-    let mut result = format!("{}:{}-{} ({} writes, all visible)\n",
-        file, start, end, chain.len());
+    let mut result = if all_visible {
+        format!("{}:{}-{} ({} writes, all visible)\n", file, start, end, chain.len())
+    } else {
+        format!("{}:{}-{} ({} writes)\n", file, start, end, chain.len())
+    };
 
     // 各 write の1行表示
     for op in chain {
-        result.push_str(&format!("  {} [visible] {}  t={}  \"{}\"\n",
-            op.id, op.participant_id, op.timestamp, op.content));
+        let status_str = match op.status {
+            OpStatus::Visible => "visible",
+            OpStatus::Accepted => "accepted",
+            OpStatus::Rejected => "rejected",
+            OpStatus::Discarded => "discarded",
+        };
+        result.push_str(&format!("  {} [{}] {}  t={}  \"{}\"\n",
+            op.id, status_str, op.participant_id, op.timestamp, op.content));
     }
 
     result.trim_end().to_string()

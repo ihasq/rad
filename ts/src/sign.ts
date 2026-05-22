@@ -3,6 +3,7 @@ import nacl from 'tweetnacl';
 export function canonicalize(opJson: string): string {
   const obj = JSON.parse(opJson);
   delete obj.signature;
+  delete obj.status;
   if (obj.reason === undefined) obj.reason = null;
   // キー昇順ソート
   const sorted = Object.keys(obj).sort().reduce((acc, key) => {

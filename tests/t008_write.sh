@@ -42,6 +42,6 @@ EOF
 )
 
 # T-W05: 出力形式一致（id を除外して比較）
-R_FMT=$(echo "$R_OUT" | sed 's/"op-[0-9]*"/"op-ID"/g' | sed 's/"id":"[^"]*"/"id":"ID"/g' | sed 's/"timestamp":[0-9]*/"timestamp":T/g')
-T_FMT=$(echo "$T_OUT" | sed 's/"op-[0-9]*"/"op-ID"/g' | sed 's/"id":"[^"]*"/"id":"ID"/g' | sed 's/"timestamp":[0-9]*/"timestamp":T/g')
+R_FMT=$(echo "$R_OUT" | sed 's/"op-[0-9]*-[0-9]*"/"op-ID"/g' | sed 's/"id":"[^"]*"/"id":"ID"/g' | sed 's/"timestamp":[0-9]*/"timestamp":T/g')
+T_FMT=$(echo "$T_OUT" | sed 's/"op-[0-9]*-[0-9]*"/"op-ID"/g' | sed 's/"id":"[^"]*"/"id":"ID"/g' | sed 's/"timestamp":[0-9]*/"timestamp":T/g')
 [ "$R_FMT" = "$T_FMT" ] || exit 1

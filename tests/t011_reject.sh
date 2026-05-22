@@ -1,0 +1,95 @@
+#!/bin/bash
+RUST="$1"; TS="$2"
+
+# 鍵ペア生成
+ALICE_KEYS=$($RUST keygen)
+ALICE_SEC=$(echo "$ALICE_KEYS" | sed -n '2p' | awk '{print $2}')
+BOB_KEYS=$($RUST keygen)
+BOB_SEC=$(echo "$BOB_KEYS" | sed -n '2p' | awk '{print $2}')
+
+# Group D: reject 基本
+
+# T-R01: Leader → Follower の reject に reason あり → status "rejected"
+R_REJECT=$(cat <<EOF | "$RUST" pipeline 2>&1
+write main.ts 5 10 alice $ALICE_SEC "v1"
+write main.ts 5 10 bob $BOB_SEC "v2"
+reject @2 alice $ALICE_SEC "not good"
+EOF
+)
+echo "$R_REJECT" | sed -n '3p' | grep -q '"status":"rejected"' || exit 1
+echo "$R_REJECT" | sed -n '3p' | grep -q '"reason":"not good"' || exit 1
+
+# T-R02: Leader → Follower の reject に reason なし → エラー
+R_NO_REASON=$(cat <<EOF | "$RUST" pipeline 2>&1
+write main.ts 5 10 alice $ALICE_SEC "v1"
+write main.ts 5 10 bob $BOB_SEC "v2"
+reject @2 alice $ALICE_SEC
+EOF
+)
+echo "$R_NO_REASON" | grep -qiE 'error.*reason|must provide' || exit 1
+
+# T-R03: Follower → Leader の reject（reason なし）→ 成功
+R_F_TO_L=$(cat <<EOF | "$RUST" pipeline 2>&1
+write main.ts 5 10 alice $ALICE_SEC "v1"
+write main.ts 5 10 bob $BOB_SEC "v2"
+reject @1 bob $BOB_SEC
+EOF
+)
+echo "$R_F_TO_L" | sed -n '3p' | grep -q '"status":"rejected"' || exit 1
+
+# T-R04: reject 後の chain で [rejected] が表示される
+R_CHAIN=$(cat <<EOF | "$RUST" pipeline 2>&1
+write main.ts 5 10 alice $ALICE_SEC "v1"
+write main.ts 5 10 bob $BOB_SEC "v2"
+reject @2 alice $ALICE_SEC "bad code"
+chain main.ts 5 10
+EOF
+)
+echo "$R_CHAIN" | grep -q '\[rejected\]' || exit 1
+
+# Group E: reject エッジケース
+
+# T-R05: 既に rejected な操作への reject はエラー
+R_DOUBLE=$(cat <<EOF | "$RUST" pipeline 2>&1
+write main.ts 5 10 alice $ALICE_SEC "v1"
+write main.ts 5 10 bob $BOB_SEC "v2"
+reject @2 alice $ALICE_SEC "reason1"
+reject @2 alice $ALICE_SEC "reason2"
+EOF
+)
+echo "$R_DOUBLE" | grep -qiE 'error.*cannot reject|error.*not visible' || exit 1
+
+# T-R06: accepted な操作への reject はエラー
+R_ACCEPT_REJECT=$(cat <<EOF | "$RUST" pipeline 2>&1
+write main.ts 5 10 alice $ALICE_SEC "v1"
+write main.ts 5 10 bob $BOB_SEC "v2"
+accept @2 alice $ALICE_SEC
+reject @2 alice $ALICE_SEC "too late"
+EOF
+)
+echo "$R_ACCEPT_REJECT" | grep -qiE 'error.*cannot reject|error.*not visible' || exit 1
+
+# Group F: 出力一致
+
+# T-R07: reject の JSON 出力が Rust と TS で一致する
+T_REJECT=$(cat <<EOF | "$TS" pipeline 2>&1
+write main.ts 5 10 alice $ALICE_SEC "v1"
+write main.ts 5 10 bob $BOB_SEC "v2"
+reject @2 alice $ALICE_SEC "not good"
+EOF
+)
+R_REJECT_NORM=$(echo "$R_REJECT" | sed -n '3p' | sed 's/"operationId":"[^"]*"/"operationId":"ID"/g')
+T_REJECT_NORM=$(echo "$T_REJECT" | sed -n '3p' | sed 's/"operationId":"[^"]*"/"operationId":"ID"/g')
+[ "$R_REJECT_NORM" = "$T_REJECT_NORM" ] || exit 1
+
+# T-R08: reject 後の chain 出力が Rust と TS で一致する
+T_CHAIN=$(cat <<EOF | "$TS" pipeline 2>&1
+write main.ts 5 10 alice $ALICE_SEC "v1"
+write main.ts 5 10 bob $BOB_SEC "v2"
+reject @2 alice $ALICE_SEC "bad code"
+chain main.ts 5 10
+EOF
+)
+R_CHAIN_NORM=$(echo "$R_CHAIN" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g' | sed 's/t=[0-9]*/t=T/g')
+T_CHAIN_NORM=$(echo "$T_CHAIN" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g' | sed 's/t=[0-9]*/t=T/g')
+[ "$R_CHAIN_NORM" = "$T_CHAIN_NORM" ] || exit 1

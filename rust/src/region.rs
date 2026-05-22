@@ -38,4 +38,10 @@ impl RegionMap {
             None => "unowned",
         }
     }
+
+    pub fn get_owner_by_region_id(&self, region_id: &str) -> Option<&str> {
+        self.regions.iter()
+            .find(|r| r.id == region_id)
+            .map(|r| r.owner_id.as_str())
+    }
 }

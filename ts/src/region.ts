@@ -29,4 +29,9 @@ export class RegionMap {
     if (owner === null) return 'unowned';
     return owner === participant ? 'leader' : 'follower';
   }
+
+  getOwnerByRegionId(regionId: string): string | undefined {
+    const region = this.regions.find(r => r.id === regionId);
+    return region?.ownerId;
+  }
 }

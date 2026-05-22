@@ -24,6 +24,14 @@ pub enum OpType {
     Reject,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum OpStatus {
+    Visible,
+    Accepted,
+    Rejected,
+    Discarded,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Operation {
     pub id: String,
@@ -34,4 +42,5 @@ pub struct Operation {
     pub reason: Option<String>,
     pub signature: String,
     pub timestamp: u64,
+    pub status: OpStatus,
 }

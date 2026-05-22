@@ -8,6 +8,7 @@ pub fn canonicalize(op_json: &str) -> String {
     let mut val: Value = serde_json::from_str(op_json).unwrap();
     if let Value::Object(ref mut map) = val {
         map.remove("signature");
+        map.remove("status");
         // reason が存在しなければ null を挿入
         if !map.contains_key("reason") {
             map.insert("reason".to_string(), Value::Null);

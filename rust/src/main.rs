@@ -8,6 +8,8 @@ mod verify;
 mod region;
 mod oplog;
 mod pipeline;
+mod accept;
+mod reject;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -109,16 +111,55 @@ fn main() {
         Some(Commands::Pipeline) => {
             let mut region_map = region::RegionMap::new();
             let mut oplog = oplog::OpLog::new();
+            let mut op_ids: Vec<String> = vec![];
+
+            // Helper to expand @N references
+            fn expand_refs(line: &str, op_ids: &[String]) -> String {
+                let mut result = line.to_string();
+                for (i, id) in op_ids.iter().enumerate() {
+                    let placeholder = format!("@{}", i + 1);
+                    result = result.replace(&placeholder, id);
+                }
+                result
+            }
+
             let stdin = std::io::stdin();
             for line in stdin.lock().lines() {
                 let line = line.unwrap();
-                let parts: Vec<&str> = line.split_whitespace().collect();
+                let expanded = expand_refs(&line, &op_ids);
+                let parts: Vec<&str> = expanded.split_whitespace().collect();
                 match parts.first().copied() {
                     Some("write") => {
-                        println!("{}", pipeline::handle_write(&parts, &mut region_map, &mut oplog));
+                        let output = pipeline::handle_write(&parts, &mut region_map, &mut oplog);
+                        // Extract op-id from JSON output
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&output) {
+                            if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
+                                op_ids.push(id.to_string());
+                            }
+                        }
+                        println!("{}", output);
                     }
                     Some("chain") => {
                         println!("{}", pipeline::handle_chain(&parts, &oplog));
+                    }
+                    Some("accept") => {
+                        // accept <op-id> <leader> <secret-key>
+                        match accept::handle_accept(parts[1], parts[2], &region_map, &mut oplog) {
+                            Ok(result) => println!("{}", serde_json::to_string(&result).unwrap()),
+                            Err(e) => eprintln!("error: {}", e),
+                        }
+                    }
+                    Some("reject") => {
+                        // reject <op-id> <rejecter> <secret-key> ["reason"]
+                        let reason = if parts.len() > 4 {
+                            Some(parts[4..].join(" ").trim_matches('"').to_string())
+                        } else {
+                            None
+                        };
+                        match reject::handle_reject(parts[1], parts[2], reason.as_deref(), &region_map, &mut oplog) {
+                            Ok(result) => println!("{}", serde_json::to_string(&result).unwrap()),
+                            Err(e) => eprintln!("error: {}", e),
+                        }
                     }
                     // region サブコマンドも pipeline 内でサポート
                     Some("region") => {
