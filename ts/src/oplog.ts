@@ -38,4 +38,12 @@ export class OpLog {
   len(): number {
     return this.ops.length;
   }
+
+  loadOperations(ops: Operation[]) {
+    this.ops = [...ops];
+  }
+
+  getAllOperations(): Operation[] {
+    return [...this.ops];
+  }
 }

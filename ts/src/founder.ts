@@ -67,6 +67,18 @@ export class FounderTree {
     return JSON.stringify(obj);
   }
 
+  getFoundersObject(): Record<string, string> {
+    const obj: Record<string, string> = {};
+    for (const [k, v] of this.founders.entries()) {
+      obj[k] = v;
+    }
+    return obj;
+  }
+
+  loadFoundersObject(obj: Record<string, string>) {
+    this.founders = new Map(Object.entries(obj));
+  }
+
   static fromJSON(json: string, rootFounder: string): FounderTree {
     const obj = JSON.parse(json);
     const tree = new FounderTree(rootFounder);

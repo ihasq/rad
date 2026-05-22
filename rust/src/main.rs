@@ -12,6 +12,7 @@ mod accept;
 mod reject;
 mod init;
 mod founder;
+mod store;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -38,7 +39,10 @@ enum Commands {
     /// Manage code regions (reads commands from stdin)
     Region,
     /// Execute commands from stdin (region, write, chain)
-    Pipeline,
+    Pipeline {
+        #[arg(long)]
+        ephemeral: bool,
+    },
     /// Initialize a new Rad project
     Init {
         #[arg(long)]
@@ -46,6 +50,8 @@ enum Commands {
         #[arg(long)]
         secret_key: String,
     },
+    /// Compact operation log into snapshots
+    Compact,
 }
 
 fn main() {
@@ -133,29 +139,43 @@ fn main() {
                 }
             }
         }
-        Some(Commands::Pipeline) => {
-            let mut region_map = region::RegionMap::new();
-            let mut oplog = oplog::OpLog::new();
+        Some(Commands::Pipeline { ephemeral }) => {
+            // Open RadStore (only if not ephemeral)
+            let cwd = std::env::current_dir().unwrap();
+            let store = if !ephemeral {
+                match store::RadStore::open(&cwd) {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        eprintln!("error: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Load state from store or create new
+            let mut region_map;
+            let mut oplog;
+            let mut founder_tree;
+
+            if let Some(ref s) = store {
+                region_map = s.load_regions();
+                oplog = match s.load_oplog() {
+                    Ok(log) => log,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        std::process::exit(1);
+                    }
+                };
+                founder_tree = s.load_founders();
+            } else {
+                region_map = region::RegionMap::new();
+                oplog = oplog::OpLog::new();
+                founder_tree = founder::FounderTree::new("");
+            }
+
             let mut op_ids: Vec<String> = vec![];
-
-            // Load config.json to get root founder
-            let config_path = std::path::Path::new(".rad/config.json");
-            let root_founder = if config_path.exists() {
-                let content = std::fs::read_to_string(config_path).unwrap();
-                let config: serde_json::Value = serde_json::from_str(&content).unwrap();
-                config.get("founder").and_then(|v| v.as_str()).unwrap_or("").to_string()
-            } else {
-                String::new()
-            };
-
-            // Load or initialize founder tree
-            let founders_path = std::path::Path::new(".rad/founders.json");
-            let mut founder_tree = if founders_path.exists() {
-                let content = std::fs::read_to_string(founders_path).unwrap();
-                founder::FounderTree::from_json(&content, &root_founder)
-            } else {
-                founder::FounderTree::new(&root_founder)
-            };
 
             // Helper to expand @N references
             fn expand_refs(line: &str, op_ids: &[String]) -> String {
@@ -187,6 +207,13 @@ fn main() {
                             }
                         }
                         println!("{}", output);
+
+                        // Persist state (only if not ephemeral)
+                        if let Some(ref s) = store {
+                            s.save_oplog(&oplog).ok();
+                            s.save_regions(&region_map).ok();
+                            s.save_founders(&founder_tree).ok();
+                        }
                     }
                     Some("chain") => {
                         println!("{}", pipeline::handle_chain(&parts, &oplog));
@@ -194,7 +221,12 @@ fn main() {
                     Some("accept") => {
                         // accept <op-id> <leader> <secret-key>
                         match accept::handle_accept(parts[1], parts[2], &region_map, &mut oplog) {
-                            Ok(result) => println!("{}", serde_json::to_string(&result).unwrap()),
+                            Ok(result) => {
+                                println!("{}", serde_json::to_string(&result).unwrap());
+                                if let Some(ref s) = store {
+                                    s.save_oplog(&oplog).ok();
+                                }
+                            }
                             Err(e) => eprintln!("error: {}", e),
                         }
                     }
@@ -206,7 +238,12 @@ fn main() {
                             None
                         };
                         match reject::handle_reject(parts[1], parts[2], reason.as_deref(), &region_map, &founder_tree, &mut oplog) {
-                            Ok(result) => println!("{}", serde_json::to_string(&result).unwrap()),
+                            Ok(result) => {
+                                println!("{}", serde_json::to_string(&result).unwrap());
+                                if let Some(ref s) = store {
+                                    s.save_oplog(&oplog).ok();
+                                }
+                            }
                             Err(e) => eprintln!("error: {}", e),
                         }
                     }
@@ -225,6 +262,9 @@ fn main() {
                                 if region_map.register(r.clone()) {
                                     println!("registered: {}:{}-{} (owner: {})",
                                         r.file_path, r.start_line, r.end_line, r.owner_id);
+                                    if let Some(ref s) = store {
+                                        s.save_regions(&region_map).ok();
+                                    }
                                 } else {
                                     println!("ignored: region already registered");
                                 }
@@ -246,10 +286,23 @@ fn main() {
                     _ => {}
                 }
             }
-
-            // Save founder tree
-            if founders_path.parent().is_some() {
-                std::fs::write(founders_path, founder_tree.to_json()).ok();
+        }
+        Some(Commands::Compact) => {
+            let cwd = std::env::current_dir().unwrap();
+            match store::RadStore::open(&cwd) {
+                Ok(store) => {
+                    match store.compact() {
+                        Ok(_) => println!("compacted"),
+                        Err(e) => {
+                            eprintln!("error: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
             }
         }
         None => {

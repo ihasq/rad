@@ -5,7 +5,7 @@ SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
 KEYS2=$($RUST keygen)
 SEC2=$(echo "$KEYS2" | sed -n '2p' | awk '{print $2}')
 
-R_OUT=$(cat <<EOF | "$RUST" pipeline 2>&1
+R_OUT=$(cat <<EOF | "$RUST" pipeline --ephemeral 2>&1
 write main.ts 5 10 alice $SEC "v1"
 write main.ts 5 10 bob $SEC2 "v2"
 chain main.ts 5 10
@@ -29,7 +29,7 @@ echo "$CHAIN" | grep -q 'alice' || exit 1
 echo "$CHAIN" | grep -q 'v1' || exit 1
 
 # T-C05: Rust/TS 出力一致（id 除外）
-T_OUT=$(cat <<EOF | "$TS" pipeline 2>&1
+T_OUT=$(cat <<EOF | "$TS" pipeline --ephemeral 2>&1
 write main.ts 5 10 alice $SEC "v1"
 write main.ts 5 10 bob $SEC2 "v2"
 chain main.ts 5 10

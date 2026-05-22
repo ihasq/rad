@@ -48,4 +48,8 @@ impl RegionMap {
     pub fn get_by_id(&self, region_id: &str) -> Option<&CodeRegion> {
         self.regions.iter().find(|r| r.id == region_id)
     }
+
+    pub fn get_all_regions(&self) -> Vec<CodeRegion> {
+        self.regions.clone()
+    }
 }

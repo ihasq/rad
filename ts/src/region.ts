@@ -38,4 +38,12 @@ export class RegionMap {
   getById(regionId: string): CodeRegion | undefined {
     return this.regions.find(r => r.id === regionId);
   }
+
+  loadRegions(regions: CodeRegion[]) {
+    this.regions = [...regions];
+  }
+
+  getAllRegions(): CodeRegion[] {
+    return [...this.regions];
+  }
 }

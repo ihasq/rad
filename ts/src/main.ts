@@ -9,6 +9,7 @@ import { handleAccept } from './accept';
 import { handleReject } from './reject';
 import { initProject } from './init';
 import { FounderTree } from './founder';
+import { RadStore } from './store';
 import * as fs from 'fs';
 
 const program = new Command();
@@ -116,29 +117,32 @@ program
 program
   .command('pipeline')
   .description('Execute commands from stdin (region, write, chain)')
-  .action(async () => {
+  .option('--ephemeral', 'Run in ephemeral mode (in-memory only)')
+  .action(async (opts) => {
     const input = await readStdin();
-    const regionMap = new RegionMap();
-    const oplog = new OpLog();
     const opIds: string[] = [];
 
-    // Load config.json to get root founder
-    const configPath = '.rad/config.json';
-    let rootFounder = '';
-    if (fs.existsSync(configPath)) {
-      const content = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(content);
-      rootFounder = config.founder || '';
+    // Open RadStore (only if not ephemeral)
+    let store: RadStore | null = null;
+    if (!opts.ephemeral) {
+      try {
+        store = RadStore.open('.');
+      } catch (e) {
+        console.error('error:', (e as Error).message);
+        process.exit(1);
+      }
     }
 
-    // Load or initialize founder tree
-    const foundersPath = '.rad/founders.json';
-    let founderTree: FounderTree;
-    if (fs.existsSync(foundersPath)) {
-      const content = fs.readFileSync(foundersPath, 'utf-8');
-      founderTree = FounderTree.fromJSON(content, rootFounder);
-    } else {
-      founderTree = new FounderTree(rootFounder);
+    // Load state from store or create new
+    const regionMap = new RegionMap();
+    const oplog = new OpLog();
+    const founderTree = new FounderTree('');
+
+    if (store) {
+      regionMap.loadRegions(store.loadRegions());
+      oplog.loadOperations(store.loadOplog());
+      const founderData = store.loadFounders();
+      founderTree.loadFoundersObject(founderData.founders);
     }
 
     // Helper to expand @N references
@@ -170,6 +174,13 @@ program
             }
           } catch {}
           console.log(output);
+
+          // Persist state (only if not ephemeral)
+          if (store) {
+            store.saveOplog(oplog.getAllOperations());
+            store.saveRegions(regionMap.getAllRegions());
+            store.saveFounders(founderTree.getFoundersObject());
+          }
           break;
         }
         case 'chain': {
@@ -181,6 +192,9 @@ program
           try {
             const result = handleAccept(parts[1], parts[2], regionMap, oplog);
             console.log(JSON.stringify(result));
+            if (store) {
+              store.saveOplog(oplog.getAllOperations());
+            }
           } catch (e) {
             console.error('error:', (e as Error).message);
           }
@@ -192,6 +206,9 @@ program
           try {
             const result = handleReject(parts[1], parts[2], reason, regionMap, founderTree, oplog);
             console.log(JSON.stringify(result));
+            if (store) {
+              store.saveOplog(oplog.getAllOperations());
+            }
           } catch (e) {
             console.error('error:', (e as Error).message);
           }
@@ -209,6 +226,9 @@ program
             };
             if (regionMap.register(r)) {
               console.log('registered: ' + r.filePath + ':' + r.startLine + '-' + r.endLine + ' (owner: ' + r.ownerId + ')');
+              if (store) {
+                store.saveRegions(regionMap.getAllRegions());
+              }
             } else {
               console.log('ignored: region already registered');
             }
@@ -230,10 +250,19 @@ program
         }
       }
     }
+  });
 
-    // Save founder tree
-    if (fs.existsSync('.rad')) {
-      fs.writeFileSync(foundersPath, founderTree.toJSON());
+program
+  .command('compact')
+  .description('Compact operation log into snapshots')
+  .action(() => {
+    try {
+      const store = RadStore.open('.');
+      store.compact();
+      console.log('compacted');
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
     }
   });
 
@@ -258,6 +287,7 @@ Commands:
   region    Manage code regions (reads commands from stdin)
   pipeline  Execute commands from stdin (region, write, chain)
   init      Initialize a new Rad project
+  compact   Compact operation log into snapshots
   help      Print this message or the help of the given subcommand(s)
 
 Options:

@@ -10,7 +10,7 @@ BOB_PUB=$(echo "$BOB_KEYS" | head -1 | awk '{print $2}')
 BOB_SEC=$(echo "$BOB_KEYS" | sed -n '2p' | awk '{print $2}')
 
 # Rust テスト
-R_OUT=$(cat <<EOF | "$RUST" pipeline 2>&1
+R_OUT=$(cat <<EOF | "$RUST" pipeline --ephemeral 2>&1
 write main.ts 5 10 alice $ALICE_SEC "const a = 1;"
 write main.ts 5 10 bob $BOB_SEC "const a = 2;"
 write utils.ts 1 5 alice $ALICE_SEC "export fn"
@@ -34,7 +34,7 @@ echo "$R_OUT" | sed -n '3p' | grep -q '"status":"visible"' || exit 1
 echo "$R_OUT" | sed -n '2p' | grep -q '"status":"visible"' || exit 1
 
 # TS テスト
-T_OUT=$(cat <<EOF | "$TS" pipeline 2>&1
+T_OUT=$(cat <<EOF | "$TS" pipeline --ephemeral 2>&1
 write main.ts 5 10 alice $ALICE_SEC "const a = 1;"
 write main.ts 5 10 bob $BOB_SEC "const a = 2;"
 write utils.ts 1 5 alice $ALICE_SEC "export fn"

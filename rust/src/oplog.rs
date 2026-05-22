@@ -48,4 +48,16 @@ impl OpLog {
     pub fn len(&self) -> usize {
         self.ops.len()
     }
+
+    pub fn get_all_operations(&self) -> Vec<Operation> {
+        self.ops.clone()
+    }
+
+    pub fn add_operation(&mut self, op: Operation) {
+        self.ops.push(op);
+    }
+
+    pub fn remove_operation(&mut self, id: &str) {
+        self.ops.retain(|op| op.id != id);
+    }
 }
