@@ -6,6 +6,8 @@ mod crypto;
 mod sign;
 mod verify;
 mod region;
+mod oplog;
+mod pipeline;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -31,6 +33,8 @@ enum Commands {
     },
     /// Manage code regions (reads commands from stdin)
     Region,
+    /// Execute commands from stdin (region, write, chain)
+    Pipeline,
 }
 
 fn main() {
@@ -97,6 +101,46 @@ fn main() {
                     Some("role") => {
                         // role <file> <line> <participant>
                         println!("{}", map.get_role(parts[1], parts[2].parse().unwrap(), parts[3]));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Some(Commands::Pipeline) => {
+            let mut region_map = region::RegionMap::new();
+            let mut oplog = oplog::OpLog::new();
+            let stdin = std::io::stdin();
+            for line in stdin.lock().lines() {
+                let line = line.unwrap();
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                match parts.first().copied() {
+                    Some("write") => {
+                        println!("{}", pipeline::handle_write(&parts, &mut region_map, &mut oplog));
+                    }
+                    Some("chain") => {
+                        println!("{}", pipeline::handle_chain(&parts, &oplog));
+                    }
+                    // region サブコマンドも pipeline 内でサポート
+                    Some("region") => {
+                        // region <subcommand> <args...>
+                        match parts.get(1).copied() {
+                            Some("register") => {
+                                let r = types::CodeRegion {
+                                    id: format!("{}:{}-{}", parts[2], parts[3], parts[4]),
+                                    file_path: parts[2].to_string(),
+                                    start_line: parts[3].parse().unwrap(),
+                                    end_line: parts[4].parse().unwrap(),
+                                    owner_id: parts[5].to_string(),
+                                };
+                                if region_map.register(r.clone()) {
+                                    println!("registered: {}:{}-{} (owner: {})",
+                                        r.file_path, r.start_line, r.end_line, r.owner_id);
+                                } else {
+                                    println!("ignored: region already registered");
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                     _ => {}
                 }

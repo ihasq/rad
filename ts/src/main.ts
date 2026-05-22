@@ -3,6 +3,8 @@ import { generateKeypair, formatKeypair } from './crypto';
 import { signOperation, injectSignature } from './sign';
 import { verifyOperation } from './verify';
 import { RegionMap } from './region';
+import { OpLog } from './oplog';
+import { handleWrite, handleChain } from './pipeline';
 
 const program = new Command();
 program
@@ -87,6 +89,47 @@ program
     }
   });
 
+program
+  .command('pipeline')
+  .description('Execute commands from stdin (region, write, chain)')
+  .action(async () => {
+    const input = await readStdin();
+    const regionMap = new RegionMap();
+    const oplog = new OpLog();
+    const lines = input.trim().split('\n');
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      switch (parts[0]) {
+        case 'write': {
+          console.log(handleWrite(parts, regionMap, oplog));
+          break;
+        }
+        case 'chain': {
+          console.log(handleChain(parts, oplog));
+          break;
+        }
+        case 'region': {
+          // region サブコマンドも pipeline 内でサポート
+          if (parts[1] === 'register') {
+            const r = {
+              id: parts[2] + ':' + parts[3] + '-' + parts[4],
+              filePath: parts[2],
+              startLine: parseInt(parts[3]),
+              endLine: parseInt(parts[4]),
+              ownerId: parts[5],
+            };
+            if (regionMap.register(r)) {
+              console.log('registered: ' + r.filePath + ':' + r.startLine + '-' + r.endLine + ' (owner: ' + r.ownerId + ')');
+            } else {
+              console.log('ignored: region already registered');
+            }
+          }
+          break;
+        }
+      }
+    }
+  });
+
 // stdin 読み取りヘルパー
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -102,11 +145,12 @@ program.configureHelp({
 Usage: rad [COMMAND]
 
 Commands:
-  keygen  Generate Ed25519 key pair
-  sign    Sign an operation from stdin
-  verify  Verify a signed operation from stdin
-  region  Manage code regions (reads commands from stdin)
-  help    Print this message or the help of the given subcommand(s)
+  keygen    Generate Ed25519 key pair
+  sign      Sign an operation from stdin
+  verify    Verify a signed operation from stdin
+  region    Manage code regions (reads commands from stdin)
+  pipeline  Execute commands from stdin (region, write, chain)
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
