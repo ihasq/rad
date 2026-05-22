@@ -17,7 +17,8 @@ pub struct CodeRegion {
     pub owner_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum OpType {
     Write,
     Approve,
@@ -25,6 +26,7 @@ pub enum OpType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum OpStatus {
     Visible,
     Accepted,

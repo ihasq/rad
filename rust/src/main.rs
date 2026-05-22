@@ -13,6 +13,7 @@ mod reject;
 mod init;
 mod founder;
 mod store;
+mod relay;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -59,7 +60,8 @@ enum Commands {
     Compact,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
     match cli.command {
         Some(Commands::Keygen) => {
@@ -292,9 +294,13 @@ fn main() {
                 }
             }
         }
-        Some(Commands::Relay { port: _ }) => {
-            eprintln!("error: relay command not implemented in Rust (use TS implementation or wait for RP10)");
-            std::process::exit(1);
+        Some(Commands::Relay { port }) => {
+            let state = std::sync::Arc::new(relay::state::RelayState::new());
+            let app = relay::create_relay_router(state);
+            let addr = format!("0.0.0.0:{}", port);
+            println!("rad relay listening on port {}", port);
+            let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+            axum::serve(listener, app).await.unwrap();
         }
         Some(Commands::Compact) => {
             let cwd = std::env::current_dir().unwrap();

@@ -27,7 +27,7 @@ pub fn sign_operation(op_json: &str, secret_key_b64: &str) -> String {
     } else {
         &sk_bytes[..]
     };
-    let signing_key = SigningKey::from_bytes(&sk_32.try_into().unwrap());
+    let signing_key = SigningKey::from_bytes(sk_32.try_into().unwrap());
     let sig = signing_key.sign(canonical.as_bytes());
     STANDARD.encode(sig.to_bytes())
 }
