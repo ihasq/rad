@@ -1,0 +1,696 @@
+openapi: 3.1.0
+info:
+  title: Rad Relay HTTP API
+  version: 0.1.0
+  description: |
+    Rad Relay はトランスポート非依存の Rad プロトコルにおける HTTP リレー実装である。
+    
+    Rad プロトコルは参加者間のコード操作を定義する。
+    Relay は参加者間の操作を中継する通信基盤であり、Rad の工学的モデルとは分離される。
+    Relay 自身が参加者を兼ねることもできるが、プロトコル上の特権は持たない。
+    
+    ## 参加者の構造
+    
+    Rad ネットワークには3種類の参加者が存在する。
+    
+    - **Founder**: あるディレクトリスコープに最初に write し、そのスコープ全体の初期 Leader として責任を受け入れた参加者。ディレクトリツリーに沿って再帰的に存在し、上位 Founder は下位 Founder の Leader である。root Founder はプロジェクト基盤（インフラ、CI、ストレージ）の提供者。
+    - **Participant**: Founder が提供する基盤の上で参加する主体（人間、LLM、CI）。コード領域に write すれば、その新規領域の Leader になれる。ディレクトリに最初に write すればそのディレクトリの Founder になれる。
+    - **Relay**: 参加者間の操作を中継する通信ノード。Founder が Relay を兼ねることが一般的だが、純粋な中継専用 Relay も存在しうる。
+    
+    Founder は構造的な権力（テスト定義、ストレージ管理）を持つ。
+    この権力はプロトコルが付与する特権ではなく、基盤提供という行為から自然に生じる。
+    他の参加者が Founder の判断に不同意であれば、コードベースを移して離脱する自由がある。
+    Rad はこの構造を隠さず明示する。
+    
+    ## コード領域と Leader / Follower
+    
+    Leader / Follower はコード領域（Code Region）単位で決定される。
+    あるコード領域に最初に write した参加者がその領域の Leader となり、
+    後から同じ領域に write した参加者がその領域の Follower となる。
+    Founder は全コード領域の初期 Leader だが、他の参加者が新規領域に write すれば
+    その参加者がその領域の Leader となる。
+    
+    同一の参加者が、ある領域では Leader であり、別の領域では Follower であることは通常の状態である。
+    これはコミットやブランチのような参加者レベルの権限構造（ヒト政治）ではなく、
+    コード領域レベルの責任の所在（コード政治）に基づく。
+    
+    ## 用語
+    
+    - **Founder**: あるディレクトリに最初に write し、そのスコープの責任を受け入れた参加者。ディレクトリツリーに沿って再帰的に存在する。root Founder はプロジェクト基盤の提供者。上位 Founder は下位 Founder の Leader。
+    - **Participant**: Rad ネットワークに参加する主体（人間、LLM、CI）。
+    - **Leader**: あるコード領域に最初に write した参加者。その領域の変更に対する責任を負う。
+    - **Follower**: あるコード領域に後から write した参加者。Leader のコードを自由に上書きできる。
+    - **Code Region**: ファイル内の行範囲。LSP スコープに対応する。Leader / Follower はこの単位で決定される。
+    - **Operation**: write / reject のいずれか。Ed25519 で署名される。
+    - **Relay**: 参加者間の操作を中継する通信ノード。Founder が兼ねることが一般的。参加者としての判断権は Founder の資格に由来し、Relay の機能には由来しない。
+    
+    ## 2段階承認モデル
+    
+    Rad は「認知」と「選択」の2段階で操作を管理する。
+    
+    ### 段階1: 認知（visible）
+    全ての write は即座に全参加者に可視化される。Relay は write を受け取ると 201 Created を返す。
+    この時点で write は「正史」ではないが、全参加者がリアルタイムに内容を認知できる。
+    
+    write はコード領域内で直列に積み重なる。後の write は前の write の上に構築される。
+    例: A が定義 → B が変更 → C がさらに変更。これは直列チェーン（A → B → C）であり、
+    並行する分岐ではない。
+    
+    ### 段階2: 選択（accept / reject）
+    コード領域の Leader が任意のタイミングで visible な write を accept（正史に採用）する。
+    
+    accept のルール:
+    - Leader が B を accept → C は B の上に構築されているため visible のまま残る（審査継続）
+    - Leader が C を accept し B を飛ばす（階段飛ばし）→ B は消滅する。C が正史となる。
+    - Leader が B を reject → B の上に構築された C は基盤を失うため、再審査が必要となる。
+    
+    Leader → Follower の reject には reason が必須。
+    accept された write のみが正史となり、コンパクション時に R2 に永続化される。
+    
+    Leader が判断しない限り write は visible のまま保持される。
+    判断の期限や強制は Rad プロトコルでは規定しない。
+    
+    ## 署名
+    
+    全操作は参加者の Ed25519 秘密鍵で署名される。
+    署名の検証は参加者間で行われる。Leader が accept する際に Follower の署名を検証し、
+    Follower は Leader の過去の accept の署名を検証する。
+    Relay が署名検証を行うのはサービス品質保証（壊れたデータの転送防止）であり、
+    プロトコル上の責務ではない。最終的に accept する Leader が検証すれば十分である。
+
+servers:
+  - url: https://{relay-host}
+    description: Rad Relay サーバ
+    variables:
+      relay-host:
+        default: localhost:8787
+
+paths:
+  /rad:
+    get:
+      operationId: listRepos
+      summary: このエンドポイントが保持するリポジトリ一覧を取得する
+      responses:
+        '200':
+          description: リポジトリ一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    repoId:
+                      type: string
+                    createdAt:
+                      type: integer
+
+  /rad/{repoId}:
+    put:
+      operationId: createRepo
+      summary: 新しい Rad リポジトリを作成する
+      description: |
+        `PUT /rad/my-project` でリポジトリを作成する。
+        github.com/user/repo と同様に、リポジトリ名がパスになる。
+      parameters:
+        - $ref: '#/components/parameters/repoId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+      responses:
+        '201':
+          description: リポジトリ作成完了
+        '409':
+          description: 同名のリポジトリが既に存在する
+
+  /rad/{repoId}/participants:
+    post:
+      operationId: joinNetwork
+      summary: Rad ネットワークに参加する
+      description: |
+        参加者を登録する。公開鍵を提示し、Relay が参加者 ID を発行する。
+        最初の参加者は Founder となり、全コード領域の初期 Leader として責任を受け入れる。
+        以降の参加者はコード領域への write を通じて、各領域の Leader になる。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinRequest'
+      responses:
+        '201':
+          description: 参加登録完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JoinResponse'
+        '400':
+          description: publicKey 欠落
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      operationId: listParticipants
+      summary: 参加者一覧を取得する
+      description: 参加順（到着順）で参加者を返す。
+      responses:
+        '200':
+          description: 参加者一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Participant'
+
+  /rad/{repoId}/operations:
+    post:
+      operationId: submitOperation
+      summary: 操作を送信する（write / approve / reject）
+      description: |
+        署名付き操作を Relay に送信する。
+        Relay は署名を検証し、受理した場合 201 Created を返す。
+        write は即座に全参加者に可視化される（visible 状態）。
+        正史への採用は Leader が accept エンドポイントで行う。
+        
+        **write**: コード領域への書き込み。即座に visible になる。正史未確定。
+        **reject**: 他の参加者の操作を拒否する。Leader → Follower のリジェクトは reason 必須。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitOperationRequest'
+      responses:
+        '201':
+          description: 操作を受理し全参加者に可視化した。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitOperationResponse'
+        '400':
+          description: リクエスト不正（必須フィールド欠落、reason 欠落等）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 署名検証失敗（Relay のサービス品質保証。プロトコル上の最終検証は Leader が行う）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rad/{repoId}/operations/{operationId}/status:
+    get:
+      operationId: getOperationStatus
+      summary: 操作のステータスを取得する
+      description: |
+        操作の現在のステータスを返す。
+        visible: 全参加者に可視化済み。Leader の判断待ち。
+        accepted: Leader が正史に採用した。
+        rejected: Leader が明示的に棄却した（reason 付き）。
+        discarded: Leader が直列チェーン上のより後の write を accept したため、この write は階段飛ばしで消滅した。
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 操作ステータス
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationStatus'
+        '404':
+          description: 操作が見つからない
+
+  /rad/{repoId}/operations/{operationId}:
+    get:
+      operationId: getOperation
+      summary: 操作の詳細を取得する
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 操作詳細
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        '404':
+          description: 操作が見つからない
+
+  /rad/{repoId}/accept:
+    post:
+      operationId: acceptOperation
+      summary: Leader が visible な write を正史に採用する
+      description: |
+        コード領域の Leader が、visible 状態の write を accept（正史に採用）する。
+        accept された write のみがコンパクション時に R2 に永続化される。
+        
+        write はコード領域内で直列チェーンを形成する（A → B → C）。
+        accept のルール:
+        - B を accept → B が正史。C は B の上に構築されているため visible のまま残る。
+        - C を accept（B を飛ばす = 階段飛ばし）→ C が正史。B は消滅する。
+        - B を reject → B の上に構築された C は基盤を失い、再審査が必要。
+        
+        Leader 以外の参加者が accept を試みた場合は 403 を返す。
+        既に accepted / rejected な操作に対する accept は 409 を返す。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptRequest'
+      responses:
+        '200':
+          description: 操作を正史に採用した
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptResponse'
+        '403':
+          description: 要求者がこの領域の Leader ではない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 対象操作が見つからない
+        '409':
+          description: 操作は既に accepted / rejected 済み
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rad/{repoId}/visible/{filePath}:
+    get:
+      operationId: getVisibleWrites
+      summary: ファイルに対する visible（未確定）な write 一覧を取得する
+      description: |
+        ファイルに対する visible（未確定）な write を直列チェーン順で返す。
+        各 write は前の write の上に構築されている。
+        Leader はこのエンドポイントで「今何が起きているか」を認知し、
+        チェーン上のどの地点を accept するかを判断する。
+        accept 地点より前の未 accept な write は「階段飛ばし」で消滅する。
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: visible な write 一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Operation'
+
+  /rad/{repoId}/files/{filePath}:
+    get:
+      operationId: getFile
+      summary: ファイルの最新内容を取得する
+      description: |
+        accept 済みの write から再構築した正史のファイル内容を返す。
+        visible だが未 accept の write は含まれない。
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ファイル内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileContent'
+        '404':
+          description: ファイルが見つからない
+
+  /rad/{repoId}/files:
+    get:
+      operationId: listFiles
+      summary: 全ファイル一覧を取得する
+      responses:
+        '200':
+          description: ファイルパス一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /rad/{repoId}/regions/{filePath}:
+    get:
+      operationId: getRegions
+      summary: ファイル内のコード領域一覧を取得する
+      description: 各領域の所有者（Leader）と行範囲を返す。
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: コード領域一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CodeRegion'
+
+  /rad/{repoId}/log:
+    get:
+      operationId: getLog
+      summary: 操作ログを取得する
+      description: 全操作を timestamp 順で返す。regionId でフィルタ可能。
+      parameters:
+        - name: regionId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: participantId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: since
+          in: query
+          required: false
+          description: この timestamp 以降の操作のみ返す
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: 操作ログ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Operation'
+
+  /rad/{repoId}/compact:
+    post:
+      operationId: triggerCompaction
+      summary: 手動コンパクションを実行する
+      description: |
+        accepted 済みの操作ログからスナップショットを再構築し、適用済みログを削除する。
+        visible のまま（未 accept）の操作はコンパクション対象外であり保持される。
+        discarded および rejected の操作はコンパクション時に削除される。
+      responses:
+        '200':
+          description: コンパクション完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompactionResult'
+
+  /rad/{repoId}/sync/git:
+    post:
+      operationId: syncGit
+      summary: Git 双方向同期を手動トリガーする
+      description: |
+        Git リポジトリとの双方向同期を実行する。
+        Git → Rad: Git の新コミットを Leader の操作として取り込む。
+        Rad → Git: Rad の新操作を Git コミットとして書き出す。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitSyncRequest'
+      responses:
+        '200':
+          description: 同期完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitSyncResult'
+
+components:
+  parameters:
+    repoId:
+      name: repoId
+      in: path
+      required: true
+      description: リポジトリ ID
+      schema:
+        type: string
+
+  schemas:
+    JoinRequest:
+      type: object
+      required: [publicKey]
+      properties:
+        publicKey:
+          type: string
+          description: Ed25519 公開鍵（Base64 エンコード）
+        displayName:
+          type: string
+          description: 参加者の表示名（任意）
+
+    JoinResponse:
+      type: object
+      properties:
+        participantId:
+          type: string
+        isFounder:
+          type: boolean
+          description: true の場合、この参加者がプロジェクトの Founder（全コード領域の初期 Leader）
+        joinedAt:
+          type: integer
+          description: Unix timestamp (ms)
+
+    Participant:
+      type: object
+      properties:
+        id:
+          type: string
+        publicKey:
+          type: string
+        displayName:
+          type: string
+        isFounder:
+          type: boolean
+          description: プロジェクトの Founder であるか
+        joinedAt:
+          type: integer
+
+    SubmitOperationRequest:
+      type: object
+      required: [participantId, type, signature]
+      properties:
+        participantId:
+          type: string
+        type:
+          type: string
+          enum: [write, reject]
+          description: write = コード書き込み（即座に visible）、reject = 拒否（Leader → Follower は reason 必須）
+        regionId:
+          type: string
+          description: 対象コード領域 ID（write 時必須）
+        targetOperationId:
+          type: string
+          description: 対象操作 ID（reject 時必須）
+        content:
+          type: string
+          description: 書き込み内容（write 時必須）
+        reason:
+          type: string
+          description: 拒否理由（Leader → Follower の reject 時必須）
+        signature:
+          type: string
+          description: Ed25519 署名（Base64 エンコード）
+
+    SubmitOperationResponse:
+      type: object
+      properties:
+        operationId:
+          type: string
+          description: 発行された操作 ID
+        status:
+          type: string
+          enum: [visible]
+          description: 受理直後は常に visible（全参加者に可視）
+
+    AcceptRequest:
+      type: object
+      required: [participantId, operationId, signature]
+      properties:
+        participantId:
+          type: string
+          description: accept を実行する Leader の参加者 ID
+        operationId:
+          type: string
+          description: accept 対象の操作 ID（visible 状態の write）
+        signature:
+          type: string
+          description: Ed25519 署名（Base64 エンコード）
+
+    AcceptResponse:
+      type: object
+      properties:
+        operationId:
+          type: string
+        status:
+          type: string
+          enum: [accepted]
+        acceptedBy:
+          type: string
+          description: accept した Leader の参加者 ID
+        acceptedAt:
+          type: integer
+          description: accept 時刻（Unix timestamp ms）
+
+    OperationStatus:
+      type: object
+      properties:
+        operationId:
+          type: string
+        status:
+          type: string
+          enum: [visible, accepted, rejected, discarded]
+          description: |
+            visible: 全参加者に可視。Leader の判断待ち。
+            accepted: Leader が正史に採用した。
+            rejected: Leader が明示的に棄却した（reason 付き）。
+            discarded: Leader がチェーン上のより後の write を accept したため階段飛ばしで消滅。
+        reason:
+          type: string
+          description: rejected 時は Leader の理由。discarded 時は「discarded: skipped by accept of {operationId}」。
+        decidedBy:
+          type: string
+          description: 判断した Leader の参加者 ID
+        decidedAt:
+          type: integer
+          description: 判断時刻（Unix timestamp ms）
+
+    Operation:
+      type: object
+      properties:
+        id:
+          type: string
+        participantId:
+          type: string
+        type:
+          type: string
+          enum: [write, reject]
+        regionId:
+          type: string
+        targetOperationId:
+          type: string
+        content:
+          type: string
+        reason:
+          type: string
+        signature:
+          type: string
+        status:
+          type: string
+          enum: [visible, accepted, rejected, discarded]
+          description: |
+            visible: 全参加者に可視、未確定。
+            accepted: 正史に採用済み。
+            rejected: Leader が明示的に棄却。
+            discarded: 階段飛ばしで消滅。
+        timestamp:
+          type: integer
+
+    CodeRegion:
+      type: object
+      properties:
+        id:
+          type: string
+        filePath:
+          type: string
+        startLine:
+          type: integer
+        endLine:
+          type: integer
+        ownerId:
+          type: string
+          description: この領域の Leader（最初に write した参加者の ID）
+
+    FileContent:
+      type: object
+      properties:
+        filePath:
+          type: string
+        content:
+          type: string
+        lastModifiedBy:
+          type: string
+          description: 最終変更者の参加者 ID
+        lastModifiedAt:
+          type: integer
+
+    CompactionResult:
+      type: object
+      properties:
+        opsProcessed:
+          type: integer
+        snapshotsCreated:
+          type: integer
+        opsCleared:
+          type: integer
+
+    GitSyncRequest:
+      type: object
+      required: [gitDir]
+      properties:
+        gitDir:
+          type: string
+          description: Git リポジトリのパス
+        direction:
+          type: string
+          enum: [bidirectional, to-git, from-git]
+          default: bidirectional
+
+    GitSyncResult:
+      type: object
+      properties:
+        importedCommits:
+          type: integer
+        exportedOperations:
+          type: integer
+        direction:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string

@@ -1,0 +1,15 @@
+name: Rad CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
+      - name: Build Rust
+        run: cd rust && cargo build --release
+      - name: Build TypeScript
+        run: cd ts && bun install && bash build.sh
+      - name: Run shared tests
+        run: bash tests/runner.sh
