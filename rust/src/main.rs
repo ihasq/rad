@@ -14,6 +14,7 @@ mod init;
 mod founder;
 mod store;
 mod relay;
+mod git;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -58,6 +59,10 @@ enum Commands {
     },
     /// Compact operation log into snapshots
     Compact,
+    /// Import Git history into Rad
+    Import,
+    /// Export Rad accepted operations to Git
+    Export,
 }
 
 #[tokio::main]
@@ -313,6 +318,31 @@ async fn main() {
                             std::process::exit(1);
                         }
                     }
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Import) => {
+            let cwd = std::env::current_dir().unwrap();
+            match git::import::import_from_git(&cwd) {
+                Ok(result) => {
+                    println!("imported: {} commits → {} operations", result.commit_count, result.operation_count);
+                    println!("participants: {} registered", result.participant_count);
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Export) => {
+            let cwd = std::env::current_dir().unwrap();
+            match git::export::export_to_git(&cwd) {
+                Ok(result) => {
+                    println!("exported: {} operations → {} commits", result.operation_count, result.commit_count);
                 }
                 Err(e) => {
                     eprintln!("error: {}", e);

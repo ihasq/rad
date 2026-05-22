@@ -60,6 +60,12 @@ export class RadStore {
     fs.writeFileSync(regionsPath, json);
   }
 
+  saveParticipants(participants: Participant[]): void {
+    const participantsPath = path.join(this.radDir, 'participants.json');
+    const json = JSON.stringify(participants);
+    fs.writeFileSync(participantsPath, json);
+  }
+
   loadFounders(): { founders: Record<string, string>; rootFounder: string } {
     const configPath = path.join(this.radDir, 'config.json');
     let rootFounder = '';

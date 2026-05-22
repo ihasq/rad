@@ -112,6 +112,13 @@ impl RadStore {
         Ok(())
     }
 
+    pub fn save_participants(&self, participants: &[crate::types::Participant]) -> Result<(), String> {
+        let participants_path = self.rad_dir.join("participants.json");
+        let json = serde_json::to_string(participants).map_err(|e| e.to_string())?;
+        fs::write(&participants_path, json).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn put_snapshot(&self, file_path: &str, content: &str) -> Result<(), String> {
         let snap_path = self.rad_dir.join("snapshots").join(file_path);
         if let Some(parent) = snap_path.parent() {

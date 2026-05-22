@@ -11,6 +11,8 @@ import { initProject } from './init';
 import { FounderTree } from './founder';
 import { RadStore } from './store';
 import { createRelayApp } from './relay/app';
+import { importFromGit } from './git/import';
+import { exportToGit } from './git/export';
 import * as fs from 'fs';
 
 const program = new Command();
@@ -282,6 +284,33 @@ program
     }
   });
 
+program
+  .command('import')
+  .description('Import Git history into Rad')
+  .action(async () => {
+    try {
+      const result = await importFromGit('.');
+      console.log(`imported: ${result.commitCount} commits → ${result.operationCount} operations`);
+      console.log(`participants: ${result.participantCount} registered`);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('export')
+  .description('Export Rad accepted operations to Git')
+  .action(async () => {
+    try {
+      const result = await exportToGit('.');
+      console.log(`exported: ${result.operationCount} operations → ${result.commitCount} commits`);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
 // stdin 読み取りヘルパー
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -305,6 +334,8 @@ Commands:
   init      Initialize a new Rad project
   relay     Start Rad Relay HTTP server
   compact   Compact operation log into snapshots
+  import    Import Git history into Rad
+  export    Export Rad accepted operations to Git
   help      Print this message or the help of the given subcommand(s)
 
 Options:
