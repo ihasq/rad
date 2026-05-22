@@ -1,5 +1,7 @@
 import { Command } from 'commander';
 import { generateKeypair, formatKeypair } from './crypto';
+import { signOperation, injectSignature } from './sign';
+import { verifyOperation } from './verify';
 
 const program = new Command();
 program
@@ -16,6 +18,37 @@ program
     console.log(formatKeypair(kp));
   });
 
+program
+  .command('sign')
+  .description('Sign an operation from stdin')
+  .requiredOption('--secret-key <key>', 'Base64 Ed25519 secret key')
+  .action(async (opts) => {
+    const input = await readStdin();
+    const sig = signOperation(input.trim(), opts.secretKey);
+    console.log(injectSignature(input.trim(), sig));
+  });
+
+program
+  .command('verify')
+  .description('Verify a signed operation from stdin')
+  .requiredOption('--public-key <key>', 'Base64 Ed25519 public key')
+  .action(async (opts) => {
+    const input = await readStdin();
+    if (verifyOperation(input.trim(), opts.publicKey)) {
+      console.log('valid');
+    } else {
+      console.log('invalid');
+      process.exit(1);
+    }
+  });
+
+// stdin 読み取りヘルパー
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf-8');
+}
+
 // カスタムヘルプフォーマット（clap と一致させる）
 program.configureHelp({
   formatHelp: () => {
@@ -25,6 +58,8 @@ Usage: rad [COMMAND]
 
 Commands:
   keygen  Generate Ed25519 key pair
+  sign    Sign an operation from stdin
+  verify  Verify a signed operation from stdin
   help    Print this message or the help of the given subcommand(s)
 
 Options:

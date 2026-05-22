@@ -11,9 +11,13 @@ pub struct KeyPair {
 pub fn generate_keypair() -> KeyPair {
     let signing_key = SigningKey::generate(&mut OsRng);
     let verifying_key = signing_key.verifying_key();
+    // tweetnacl と互換性を保つため、64バイトフォーマット（秘密鍵32バイト + 公開鍵32バイト）を使用
+    let mut secret_key = Vec::new();
+    secret_key.extend_from_slice(&signing_key.to_bytes());
+    secret_key.extend_from_slice(verifying_key.as_bytes());
     KeyPair {
         public_key: STANDARD.encode(verifying_key.as_bytes()),
-        secret_key: signing_key.to_bytes().to_vec(),
+        secret_key,
     }
 }
 
