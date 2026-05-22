@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { generateKeypair, formatKeypair } from './crypto';
 import { signOperation, injectSignature } from './sign';
 import { verifyOperation } from './verify';
+import { RegionMap } from './region';
 
 const program = new Command();
 program
@@ -42,6 +43,50 @@ program
     }
   });
 
+program
+  .command('region')
+  .description('Manage code regions (reads commands from stdin)')
+  .action(async () => {
+    const input = await readStdin();
+    const map = new RegionMap();
+    const lines = input.trim().split('\n');
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      switch (parts[0]) {
+        case 'register': {
+          const r = {
+            id: parts[1] + ':' + parts[2] + '-' + parts[3],
+            filePath: parts[1],
+            startLine: parseInt(parts[2]),
+            endLine: parseInt(parts[3]),
+            ownerId: parts[4],
+          };
+          if (map.register(r)) {
+            console.log('registered: ' + r.filePath + ':' + r.startLine + '-' + r.endLine + ' (owner: ' + r.ownerId + ')');
+          } else {
+            console.log('ignored: region already registered');
+          }
+          break;
+        }
+        case 'owner': {
+          const o = map.getOwner(parts[1], parseInt(parts[2]));
+          console.log(o ?? 'unowned');
+          break;
+        }
+        case 'list': {
+          for (const r of map.list(parts[1])) {
+            console.log(r.filePath + ':' + r.startLine + '-' + r.endLine + '\towner:' + r.ownerId);
+          }
+          break;
+        }
+        case 'role': {
+          console.log(map.getRole(parts[1], parseInt(parts[2]), parts[3]));
+          break;
+        }
+      }
+    }
+  });
+
 // stdin 読み取りヘルパー
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -60,6 +105,7 @@ Commands:
   keygen  Generate Ed25519 key pair
   sign    Sign an operation from stdin
   verify  Verify a signed operation from stdin
+  region  Manage code regions (reads commands from stdin)
   help    Print this message or the help of the given subcommand(s)
 
 Options:

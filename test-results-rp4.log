@@ -1,0 +1,14 @@
+=== Rad Test Suite ===
+  ✅ t001_version
+  ✅ t002_help
+  ✅ t003_keygen
+  ⏭  t004_init (SKIP)
+  ✅ t005_sign
+  ✅ t006_verify
+  ✅ t007_region
+
+=== SUMMARY ===
+  total: 7
+  pass:  6
+  fail:  0
+  skip:  1
