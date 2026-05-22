@@ -3,7 +3,7 @@ import * as path from 'path';
 import type { OpLog } from './oplog';
 import type { RegionMap } from './region';
 import type { FounderTree } from './founder';
-import type { Operation, CodeRegion, OpStatus } from './types';
+import type { Operation, CodeRegion, OpStatus, Participant } from './types';
 
 export class RadStore {
   private radDir: string;
@@ -58,6 +58,20 @@ export class RadStore {
     const regionsPath = path.join(this.radDir, 'regions.json');
     const json = JSON.stringify(regions);
     fs.writeFileSync(regionsPath, json);
+  }
+
+  loadParticipants(): Participant[] {
+    const participantsPath = path.join(this.radDir, 'participants.json');
+    if (!fs.existsSync(participantsPath)) {
+      return [];
+    }
+
+    try {
+      const content = fs.readFileSync(participantsPath, 'utf-8');
+      return JSON.parse(content);
+    } catch {
+      return [];
+    }
   }
 
   saveParticipants(participants: Participant[]): void {

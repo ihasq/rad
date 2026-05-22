@@ -15,6 +15,7 @@ mod founder;
 mod store;
 mod relay;
 mod git;
+mod cmd;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -63,6 +64,19 @@ enum Commands {
     Import,
     /// Export Rad accepted operations to Git
     Export,
+    /// Show project status
+    Status,
+    /// Show operation log
+    Log {
+        #[arg(long)]
+        participant: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+    },
+    /// Show diff between accepted and visible writes
+    Diff,
 }
 
 #[tokio::main]
@@ -343,6 +357,65 @@ async fn main() {
             match git::export::export_to_git(&cwd) {
                 Ok(result) => {
                     println!("exported: {} operations → {} commits", result.operation_count, result.commit_count);
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Status) => {
+            let cwd = std::env::current_dir().unwrap();
+            match store::RadStore::open(&cwd) {
+                Ok(store) => {
+                    match cmd::status::run_status(&store) {
+                        Ok(output) => print!("{}", output),
+                        Err(e) => {
+                            eprintln!("error: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Log { participant, file, status }) => {
+            let cwd = std::env::current_dir().unwrap();
+            match store::RadStore::open(&cwd) {
+                Ok(store) => {
+                    let opts = cmd::log::LogOptions {
+                        participant,
+                        file,
+                        status,
+                    };
+                    match cmd::log::run_log(&store, &opts) {
+                        Ok(output) => print!("{}", output),
+                        Err(e) => {
+                            eprintln!("error: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Diff) => {
+            let cwd = std::env::current_dir().unwrap();
+            match store::RadStore::open(&cwd) {
+                Ok(store) => {
+                    match cmd::diff::run_diff(&store) {
+                        Ok(output) => print!("{}", output),
+                        Err(e) => {
+                            eprintln!("error: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
                 }
                 Err(e) => {
                     eprintln!("error: {}", e);

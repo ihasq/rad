@@ -1,5 +1,6 @@
 import { spawn } from 'bun';
 import { RadStore } from '../store';
+import { RegionMap } from '../region';
 import type { Operation, Participant, CodeRegion } from '../types';
 
 export interface ImportResult {
@@ -13,7 +14,8 @@ export async function importFromGit(projectDir: string): Promise<ImportResult> {
 
   // Load existing state
   const oplog: Operation[] = store.loadOplog();
-  const regions: CodeRegion[] = store.loadRegions();
+  const regionMap = new RegionMap();
+  regionMap.loadRegions(store.loadRegions());
 
   // Track participants
   const participants: Participant[] = [];
@@ -86,11 +88,12 @@ export async function importFromGit(projectDir: string): Promise<ImportResult> {
               const content = await new Response(contentProc.stdout).text();
 
               if (content) {
-                // Calculate line count
-                const lineCount = Math.max(1, content.split('\n').length);
+                // Calculate line count (match Rust's lines().count() behavior)
+                const lines = content.split('\n');
+                const lineCount = Math.max(1, lines[lines.length - 1] === '' ? lines.length - 1 : lines.length);
                 const regionId = `${filePath}:1-${lineCount}`;
 
-                // Register region
+                // Register region (only if not already registered)
                 const region: CodeRegion = {
                   id: regionId,
                   filePath: filePath,
@@ -98,7 +101,7 @@ export async function importFromGit(projectDir: string): Promise<ImportResult> {
                   endLine: lineCount,
                   ownerId: participantId,
                 };
-                regions.push(region);
+                regionMap.register(region);
 
                 // Create operation
                 const opId = `op-${timestamp}-${operationCount}`;
@@ -135,7 +138,7 @@ export async function importFromGit(projectDir: string): Promise<ImportResult> {
 
   // Save state
   store.saveOplog(oplog);
-  store.saveRegions(regions);
+  store.saveRegions(regionMap.getAllRegions());
   store.saveParticipants(participants);
 
   return {

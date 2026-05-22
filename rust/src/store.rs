@@ -112,6 +112,20 @@ impl RadStore {
         Ok(())
     }
 
+    pub fn load_participants(&self) -> Vec<crate::types::Participant> {
+        let participants_path = self.rad_dir.join("participants.json");
+        if !participants_path.exists() {
+            return Vec::new();
+        }
+
+        match fs::read_to_string(&participants_path) {
+            Ok(content) => {
+                serde_json::from_str(&content).unwrap_or_else(|_| Vec::new())
+            }
+            Err(_) => Vec::new()
+        }
+    }
+
     pub fn save_participants(&self, participants: &[crate::types::Participant]) -> Result<(), String> {
         let participants_path = self.rad_dir.join("participants.json");
         let json = serde_json::to_string(participants).map_err(|e| e.to_string())?;

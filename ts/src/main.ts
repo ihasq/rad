@@ -13,6 +13,9 @@ import { RadStore } from './store';
 import { createRelayApp } from './relay/app';
 import { importFromGit } from './git/import';
 import { exportToGit } from './git/export';
+import { runStatus } from './cmd/status';
+import { runLog } from './cmd/log';
+import { runDiff } from './cmd/diff';
 import * as fs from 'fs';
 
 const program = new Command();
@@ -311,6 +314,55 @@ program
     }
   });
 
+program
+  .command('status')
+  .description('Show project status')
+  .action(() => {
+    try {
+      const store = RadStore.open('.');
+      const output = runStatus(store);
+      process.stdout.write(output);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('log')
+  .description('Show operation log')
+  .option('--participant <id>', 'Filter by participant ID')
+  .option('--file <path>', 'Filter by file path')
+  .option('--status <status>', 'Filter by status')
+  .action((opts) => {
+    try {
+      const store = RadStore.open('.');
+      const output = runLog(store, {
+        participant: opts.participant,
+        file: opts.file,
+        status: opts.status,
+      });
+      process.stdout.write(output);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('diff')
+  .description('Show diff between accepted and visible writes')
+  .action(() => {
+    try {
+      const store = RadStore.open('.');
+      const output = runDiff(store);
+      process.stdout.write(output);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
 // stdin 読み取りヘルパー
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -336,6 +388,9 @@ Commands:
   compact   Compact operation log into snapshots
   import    Import Git history into Rad
   export    Export Rad accepted operations to Git
+  status    Show project status
+  log       Show operation log
+  diff      Show diff between accepted and visible writes
   help      Print this message or the help of the given subcommand(s)
 
 Options:
