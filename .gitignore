@@ -2,3 +2,17 @@ node_modules/
 rust/target/
 ts/dist/
 ts/node_modules/
+
+# Test result logs
+test-results-*.log
+**/test-results-*.log
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
