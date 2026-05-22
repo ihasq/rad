@@ -1,5 +1,8 @@
 use clap::Parser;
 
+mod types;
+mod crypto;
+
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
 #[command(about = "Rad source control management")]
@@ -9,10 +12,20 @@ struct Cli {
 }
 
 #[derive(clap::Subcommand)]
-enum Commands {}
+enum Commands {
+    /// Generate Ed25519 key pair
+    Keygen,
+}
 
 fn main() {
-    let _cli = Cli::parse();
-    // サブコマンドなしの場合は help を表示
-    Cli::parse_from(["rad", "--help"]);
+    let cli = Cli::parse();
+    match cli.command {
+        Some(Commands::Keygen) => {
+            let kp = crypto::generate_keypair();
+            println!("{}", crypto::format_keypair(&kp));
+        }
+        None => {
+            Cli::parse_from(["rad", "--help"]);
+        }
+    }
 }
