@@ -84,6 +84,17 @@ export function createOperationsRoutes(state: RelayState) {
 
       state.oplog.append(op);
 
+      // Persist to S3 if store is available
+      if (state.store) {
+        try {
+          await state.store.appendOp(op);
+          await state.store.saveRegions(state.regionMap.getAllRegions());
+          await state.store.saveFounders(state.founderTree.getFoundersObject());
+        } catch (e) {
+          console.error('Failed to save operation to S3:', e);
+        }
+      }
+
       return c.json({
         operationId: op.id,
         status: op.status,

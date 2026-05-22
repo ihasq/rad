@@ -59,6 +59,18 @@ enum Commands {
     Relay {
         #[arg(long, default_value = "8787")]
         port: u16,
+        #[arg(long, default_value = "memory")]
+        storage: String,
+        #[arg(long)]
+        s3_endpoint: Option<String>,
+        #[arg(long)]
+        s3_bucket: Option<String>,
+        #[arg(long)]
+        s3_access_key: Option<String>,
+        #[arg(long)]
+        s3_secret_key: Option<String>,
+        #[arg(long, default_value = "us-east-1")]
+        s3_region: String,
     },
     /// Compact operation log into snapshots
     Compact,
@@ -327,12 +339,71 @@ async fn main() {
                 }
             }
         }
-        Some(Commands::Relay { port }) => {
-            let state = std::sync::Arc::new(relay::state::RelayState::new());
+        Some(Commands::Relay {
+            port,
+            storage,
+            s3_endpoint,
+            s3_bucket,
+            s3_access_key,
+            s3_secret_key,
+            s3_region
+        }) => {
+            use crate::storage::{S3Backend, S3Config, S3RadStore};
+
+            let state = if storage == "s3" {
+                // Validate S3 options
+                if s3_endpoint.is_none() || s3_bucket.is_none() || s3_access_key.is_none() || s3_secret_key.is_none() {
+                    eprintln!("error: S3 storage requires --s3-endpoint, --s3-bucket, --s3-access-key, and --s3-secret-key");
+                    std::process::exit(1);
+                }
+
+                let config = S3Config {
+                    endpoint: s3_endpoint.unwrap(),
+                    bucket: s3_bucket.unwrap(),
+                    access_key: s3_access_key.unwrap(),
+                    secret_key: s3_secret_key.unwrap(),
+                    region: s3_region,
+                };
+
+                match S3Backend::new(config) {
+                    Ok(backend) => {
+                        let store = std::sync::Arc::new(S3RadStore::new(std::sync::Arc::new(backend)));
+                        println!("rad relay using S3 storage");
+
+                        // Load existing data from S3
+                        match relay::state::RelayState::from_s3_store(store).await {
+                            Ok(state) => std::sync::Arc::new(state),
+                            Err(e) => {
+                                eprintln!("error: Failed to load data from S3: {}", e);
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("error: Failed to initialize S3 backend: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                std::sync::Arc::new(relay::state::RelayState::new())
+            };
+
             let app = relay::create_relay_router(state);
-            let addr = format!("0.0.0.0:{}", port);
+            let addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
             println!("rad relay listening on port {}", port);
-            let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+
+            // Create socket with SO_REUSEADDR to allow quick port reuse in tests
+            let socket = socket2::Socket::new(
+                socket2::Domain::IPV4,
+                socket2::Type::STREAM,
+                Some(socket2::Protocol::TCP),
+            ).unwrap();
+            socket.set_reuse_address(true).unwrap();
+            socket.set_nonblocking(true).unwrap();
+            socket.bind(&addr.into()).unwrap();
+            socket.listen(1024).unwrap();
+
+            let listener = tokio::net::TcpListener::from_std(socket.into()).unwrap();
             axum::serve(listener, app).await.unwrap();
         }
         Some(Commands::Compact) => {

@@ -1,5 +1,6 @@
 use crate::types::CodeRegion;
 
+#[derive(Clone)]
 pub struct RegionMap {
     regions: Vec<CodeRegion>,
 }

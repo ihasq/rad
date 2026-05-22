@@ -265,8 +265,43 @@ program
   .command('relay')
   .description('Start Rad Relay HTTP server')
   .option('--port <port>', 'Port number', '8787')
-  .action((opts) => {
-    const { app } = createRelayApp();
+  .option('--storage <type>', 'Storage backend: memory | s3', 'memory')
+  .option('--s3-endpoint <url>', 'S3 endpoint URL')
+  .option('--s3-bucket <name>', 'S3 bucket name')
+  .option('--s3-access-key <key>', 'S3 access key')
+  .option('--s3-secret-key <key>', 'S3 secret key')
+  .option('--s3-region <region>', 'S3 region', 'us-east-1')
+  .action(async (opts) => {
+    let store;
+
+    if (opts.storage === 's3') {
+      // Validate S3 options
+      if (!opts.s3Endpoint || !opts.s3Bucket || !opts.s3AccessKey || !opts.s3SecretKey) {
+        console.error('error: S3 storage requires --s3-endpoint, --s3-bucket, --s3-access-key, and --s3-secret-key');
+        process.exit(1);
+      }
+
+      try {
+        const { S3Backend } = await import('./storage/s3-backend');
+        const { S3RadStore } = await import('./storage/s3-store');
+
+        const s3Backend = new S3Backend({
+          endpoint: opts.s3Endpoint,
+          bucket: opts.s3Bucket,
+          accessKey: opts.s3AccessKey,
+          secretKey: opts.s3SecretKey,
+          region: opts.s3Region,
+        });
+
+        store = new S3RadStore(s3Backend);
+        console.log('rad relay using S3 storage: ' + opts.s3Endpoint + '/' + opts.s3Bucket);
+      } catch (e) {
+        console.error('error: Failed to initialize S3 storage:', (e as Error).message);
+        process.exit(1);
+      }
+    }
+
+    const { app } = await createRelayApp(store);
     const port = parseInt(opts.port);
     console.log('rad relay listening on port ' + port);
 

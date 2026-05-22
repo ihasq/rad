@@ -34,6 +34,23 @@ export function createParticipantsRoutes(state: RelayState) {
       state.founderTree.registerFromWrite('.', participantId);
     }
 
+    // Persist to S3 if store is available
+    if (state.store) {
+      try {
+        // Convert relay::Participant to types::Participant
+        const participantList = Array.from(state.participants.values()).map(p => ({
+          id: p.participantId,
+          publicKey: p.publicKey,
+          displayName: p.displayName,
+          joinedAt: p.joinedAt,
+        }));
+        await state.store.saveParticipants(participantList);
+        await state.store.saveFounders(state.founderTree.getFoundersObject());
+      } catch (e) {
+        console.error('Failed to save to S3:', e);
+      }
+    }
+
     return c.json(participant, 201);
   });
 

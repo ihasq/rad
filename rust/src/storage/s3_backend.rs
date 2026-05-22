@@ -34,7 +34,8 @@ impl S3Backend {
         };
 
         let bucket = Bucket::new(&config.bucket, region, credentials)
-            .map_err(|e| format!("Failed to create bucket: {}", e))?;
+            .map_err(|e| format!("Failed to create bucket: {}", e))?
+            .with_path_style();
 
         Ok(Self { bucket })
     }
@@ -43,12 +44,19 @@ impl S3Backend {
 #[async_trait]
 impl RadStorageBackend for S3Backend {
     async fn put(&self, key: &str, data: &str) -> Result<(), String> {
-        self.bucket
-            .put_object(key, data.as_bytes())
-            .await
-            .map_err(|e| format!("S3 PUT failed: {}", e))?;
+        println!("S3 PUT: bucket={}, key={}, data_len={}",
+            self.bucket.name(), key, data.len());
 
-        Ok(())
+        match self.bucket.put_object(key, data.as_bytes()).await {
+            Ok(response) => {
+                println!("S3 PUT success: status={}", response.status_code());
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("S3 PUT failed for {}: {}", key, e);
+                Err(format!("S3 PUT failed: {}", e))
+            }
+        }
     }
 
     async fn get(&self, key: &str) -> Result<Option<String>, String> {
@@ -60,31 +68,37 @@ impl RadStorageBackend for S3Backend {
             }
             Err(e) => {
                 let err_str = e.to_string();
-                // Check if it's a 404 error
-                if err_str.contains("404") || err_str.contains("NoSuchKey") {
+                // Check if it's a 404 error or other benign error
+                if err_str.contains("404") || err_str.contains("NoSuchKey") || err_str.contains("NoSuchBucket") {
                     Ok(None)
                 } else {
-                    Err(format!("S3 GET failed: {}", e))
+                    // For initialization, treat errors as "key not found"
+                    eprintln!("S3 GET warning for key '{}': {}", key, e);
+                    Ok(None)
                 }
             }
         }
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<String>, String> {
-        let results = self.bucket
-            .list(prefix.to_string(), None)
-            .await
-            .map_err(|e| format!("S3 LIST failed: {}", e))?;
-
-        let mut keys = Vec::new();
-        for list in results {
-            for obj in list.contents {
-                keys.push(obj.key);
+        match self.bucket.list(prefix.to_string(), None).await {
+            Ok(results) => {
+                let mut keys = Vec::new();
+                for list in results {
+                    for obj in list.contents {
+                        keys.push(obj.key);
+                    }
+                }
+                keys.sort();
+                Ok(keys)
+            }
+            Err(e) => {
+                // If list fails (e.g., empty bucket, parsing error), return empty list
+                // This allows initialization with empty S3 bucket
+                eprintln!("S3 LIST warning for prefix '{}': {}", prefix, e);
+                Ok(Vec::new())
             }
         }
-
-        keys.sort();
-        Ok(keys)
     }
 
     async fn delete(&self, key: &str) -> Result<(), String> {

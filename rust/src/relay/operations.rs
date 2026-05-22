@@ -188,8 +188,41 @@ pub async fn submit(
         };
 
         let mut oplog = state.oplog.lock().unwrap();
-        oplog.append(operation);
+        oplog.append(operation.clone());
         drop(oplog);
+
+        // S3 永続化 (spawn task to avoid blocking)
+        if let Some(store) = state.store.clone() {
+            let op_clone = operation.clone();
+
+            // Clone region_map and founder_tree for async task
+            let region_map_clone = {
+                let rm = state.region_map.lock().unwrap();
+                rm.clone()
+            };
+
+            let founders_json = {
+                let ft = state.founder_tree.lock().unwrap();
+                ft.to_json()
+            };
+
+            tokio::spawn(async move {
+                match store.append_op(&op_clone).await {
+                    Ok(_) => println!("Operation {} saved to S3 successfully", op_clone.id),
+                    Err(e) => eprintln!("Failed to save operation to S3: {}", e),
+                }
+                match store.save_regions(&region_map_clone).await {
+                    Ok(_) => println!("Regions saved to S3 successfully"),
+                    Err(e) => eprintln!("Failed to save regions to S3: {}", e),
+                }
+                // Parse JSON back to FounderTree to save
+                let temp_tree = crate::founder::FounderTree::from_json(&founders_json, "");
+                match store.save_founders(&temp_tree).await {
+                    Ok(_) => println!("Founders saved to S3 successfully"),
+                    Err(e) => eprintln!("Failed to save founders to S3: {}", e),
+                }
+            });
+        }
 
         Ok((
             StatusCode::CREATED,

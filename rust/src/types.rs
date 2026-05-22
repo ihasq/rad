@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Participant {
     pub id: String,
     pub public_key: String,
@@ -9,6 +10,7 @@ pub struct Participant {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CodeRegion {
     pub id: String,
     pub file_path: String,
@@ -35,10 +37,12 @@ pub enum OpStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Operation {
     pub id: String,
     pub participant_id: String,
     pub region_id: String,
+    #[serde(rename = "type")]
     pub op_type: OpType,
     pub content: String,
     pub reason: Option<String>,

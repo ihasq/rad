@@ -2,13 +2,13 @@
 RUST="$1"; TS="$2"
 
 # 既存の relay プロセスをクリーンアップ
-for pid in $(lsof -t -i:19000 -i:19001 2>/dev/null); do kill -9 $pid 2>/dev/null; done
+for pid in $(lsof -t -i:19002 -i:19003 2>/dev/null); do kill -9 $pid 2>/dev/null; done
 killall -9 rad 2>/dev/null || true
 sleep 1
 
 # TS Relay と Rust Relay を別ポートで起動
-TS_PORT=19000
-RUST_PORT=19001
+TS_PORT=19002
+RUST_PORT=19003
 
 "$TS" relay --port $TS_PORT > /tmp/relay-ts-parity.log 2>&1 &
 TS_PID=$!
