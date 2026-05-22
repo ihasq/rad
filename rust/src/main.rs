@@ -50,6 +50,11 @@ enum Commands {
         #[arg(long)]
         secret_key: String,
     },
+    /// Start Rad Relay HTTP server
+    Relay {
+        #[arg(long, default_value = "8787")]
+        port: u16,
+    },
     /// Compact operation log into snapshots
     Compact,
 }
@@ -286,6 +291,10 @@ fn main() {
                     _ => {}
                 }
             }
+        }
+        Some(Commands::Relay { port: _ }) => {
+            eprintln!("error: relay command not implemented in Rust (use TS implementation or wait for RP10)");
+            std::process::exit(1);
         }
         Some(Commands::Compact) => {
             let cwd = std::env::current_dir().unwrap();

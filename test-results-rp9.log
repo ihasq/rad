@@ -1,0 +1,25 @@
+=== Rad Test Suite ===
+  ✅ t001_version
+  ❌ t002_help
+  ✅ t003_keygen
+  ✅ t004_init
+  ✅ t005_sign
+  ✅ t006_verify
+  ✅ t007_region
+  ✅ t008_write
+  ✅ t009_chain
+  ✅ t010_accept
+  ✅ t011_reject
+.: founder: alice
+src/components/: founder: bob
+  ✅ t012_founder
+  ✅ t013_store
+/tmp/tmp.E3D3uooF1y/.rad/snapshots/src/main.ts
+  ✅ t014_persist
+  ❌ t015_relay
+
+=== SUMMARY ===
+  total: 15
+  pass:  13
+  fail:  2
+  skip:  0

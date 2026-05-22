@@ -10,6 +10,7 @@ import { handleReject } from './reject';
 import { initProject } from './init';
 import { FounderTree } from './founder';
 import { RadStore } from './store';
+import { createRelayApp } from './relay/app';
 import * as fs from 'fs';
 
 const program = new Command();
@@ -253,6 +254,21 @@ program
   });
 
 program
+  .command('relay')
+  .description('Start Rad Relay HTTP server')
+  .option('--port <port>', 'Port number', '8787')
+  .action((opts) => {
+    const { app } = createRelayApp();
+    const port = parseInt(opts.port);
+    console.log('rad relay listening on port ' + port);
+
+    Bun.serve({
+      fetch: app.fetch,
+      port,
+    });
+  });
+
+program
   .command('compact')
   .description('Compact operation log into snapshots')
   .action(() => {
@@ -287,6 +303,7 @@ Commands:
   region    Manage code regions (reads commands from stdin)
   pipeline  Execute commands from stdin (region, write, chain)
   init      Initialize a new Rad project
+  relay     Start Rad Relay HTTP server
   compact   Compact operation log into snapshots
   help      Print this message or the help of the given subcommand(s)
 
