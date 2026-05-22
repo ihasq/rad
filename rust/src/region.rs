@@ -44,4 +44,8 @@ impl RegionMap {
             .find(|r| r.id == region_id)
             .map(|r| r.owner_id.as_str())
     }
+
+    pub fn get_by_id(&self, region_id: &str) -> Option<&CodeRegion> {
+        self.regions.iter().find(|r| r.id == region_id)
+    }
 }

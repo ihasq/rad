@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { generateKeypair, formatKeypair } from './crypto';
+import { generateKeypair, formatKeypair, keypairFromSecret, formatPublicKey } from './crypto';
 import { signOperation, injectSignature } from './sign';
 import { verifyOperation } from './verify';
 import { RegionMap } from './region';
@@ -7,6 +7,9 @@ import { OpLog } from './oplog';
 import { handleWrite, handleChain } from './pipeline';
 import { handleAccept } from './accept';
 import { handleReject } from './reject';
+import { initProject } from './init';
+import { FounderTree } from './founder';
+import * as fs from 'fs';
 
 const program = new Command();
 program
@@ -92,6 +95,25 @@ program
   });
 
 program
+  .command('init')
+  .description('Initialize a new Rad project')
+  .requiredOption('--participant <id>', 'Participant ID')
+  .requiredOption('--secret-key <key>', 'Base64 Ed25519 secret key')
+  .action((opts) => {
+    const kp = keypairFromSecret(opts.secretKey);
+    const publicKey = formatPublicKey(kp);
+
+    try {
+      const result = initProject('.', opts.participant, publicKey);
+      console.log('initialized: .');
+      console.log('founder: ' + result.founder);
+    } catch (e) {
+      console.error('error:', (e as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
   .command('pipeline')
   .description('Execute commands from stdin (region, write, chain)')
   .action(async () => {
@@ -99,6 +121,25 @@ program
     const regionMap = new RegionMap();
     const oplog = new OpLog();
     const opIds: string[] = [];
+
+    // Load config.json to get root founder
+    const configPath = '.rad/config.json';
+    let rootFounder = '';
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(content);
+      rootFounder = config.founder || '';
+    }
+
+    // Load or initialize founder tree
+    const foundersPath = '.rad/founders.json';
+    let founderTree: FounderTree;
+    if (fs.existsSync(foundersPath)) {
+      const content = fs.readFileSync(foundersPath, 'utf-8');
+      founderTree = FounderTree.fromJSON(content, rootFounder);
+    } else {
+      founderTree = new FounderTree(rootFounder);
+    }
 
     // Helper to expand @N references
     function expandRefs(line: string): string {
@@ -115,6 +156,11 @@ program
       const parts = expanded.split(/\s+/);
       switch (parts[0]) {
         case 'write': {
+          // write <file> <start> <end> <participant> <secret-key> <text>
+          const file = parts[1];
+          const participant = parts[4];
+          founderTree.registerFromWrite(file, participant);
+
           const output = handleWrite(parts, regionMap, oplog);
           // Extract op-id from JSON output
           try {
@@ -144,7 +190,7 @@ program
           // reject <op-id> <rejecter> <secret-key> ["reason"]
           const reason = parts.length > 4 ? parts.slice(4).join(' ').replace(/^"|"$/g, '') : undefined;
           try {
-            const result = handleReject(parts[1], parts[2], reason, regionMap, oplog);
+            const result = handleReject(parts[1], parts[2], reason, regionMap, founderTree, oplog);
             console.log(JSON.stringify(result));
           } catch (e) {
             console.error('error:', (e as Error).message);
@@ -169,7 +215,25 @@ program
           }
           break;
         }
+        case 'founder': {
+          // founder [dir]
+          const dir = parts[1] || '.';
+          // Strip trailing slash for consistency
+          const dirNormalized = dir.replace(/\/$/, '') || '.';
+          const founder = founderTree.getFounder(dirNormalized);
+          if (founder) {
+            console.log(dir + ': founder: ' + founder);
+          } else {
+            console.log(dir + ': no founder');
+          }
+          break;
+        }
       }
+    }
+
+    // Save founder tree
+    if (fs.existsSync('.rad')) {
+      fs.writeFileSync(foundersPath, founderTree.toJSON());
     }
   });
 
@@ -193,6 +257,7 @@ Commands:
   verify    Verify a signed operation from stdin
   region    Manage code regions (reads commands from stdin)
   pipeline  Execute commands from stdin (region, write, chain)
+  init      Initialize a new Rad project
   help      Print this message or the help of the given subcommand(s)
 
 Options:

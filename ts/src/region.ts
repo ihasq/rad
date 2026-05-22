@@ -34,4 +34,8 @@ export class RegionMap {
     const region = this.regions.find(r => r.id === regionId);
     return region?.ownerId;
   }
+
+  getById(regionId: string): CodeRegion | undefined {
+    return this.regions.find(r => r.id === regionId);
+  }
 }

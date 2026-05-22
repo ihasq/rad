@@ -10,6 +10,8 @@ mod oplog;
 mod pipeline;
 mod accept;
 mod reject;
+mod init;
+mod founder;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -37,6 +39,13 @@ enum Commands {
     Region,
     /// Execute commands from stdin (region, write, chain)
     Pipeline,
+    /// Initialize a new Rad project
+    Init {
+        #[arg(long)]
+        participant: String,
+        #[arg(long)]
+        secret_key: String,
+    },
 }
 
 fn main() {
@@ -108,10 +117,45 @@ fn main() {
                 }
             }
         }
+        Some(Commands::Init { participant, secret_key }) => {
+            // Generate public key from secret key
+            let kp = crypto::keypair_from_secret(&secret_key);
+            let public_key = crypto::format_public_key(&kp);
+
+            match init::init_project(std::path::Path::new("."), &participant, &public_key) {
+                Ok(result) => {
+                    println!("initialized: .");
+                    println!("founder: {}", result.founder);
+                }
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
         Some(Commands::Pipeline) => {
             let mut region_map = region::RegionMap::new();
             let mut oplog = oplog::OpLog::new();
             let mut op_ids: Vec<String> = vec![];
+
+            // Load config.json to get root founder
+            let config_path = std::path::Path::new(".rad/config.json");
+            let root_founder = if config_path.exists() {
+                let content = std::fs::read_to_string(config_path).unwrap();
+                let config: serde_json::Value = serde_json::from_str(&content).unwrap();
+                config.get("founder").and_then(|v| v.as_str()).unwrap_or("").to_string()
+            } else {
+                String::new()
+            };
+
+            // Load or initialize founder tree
+            let founders_path = std::path::Path::new(".rad/founders.json");
+            let mut founder_tree = if founders_path.exists() {
+                let content = std::fs::read_to_string(founders_path).unwrap();
+                founder::FounderTree::from_json(&content, &root_founder)
+            } else {
+                founder::FounderTree::new(&root_founder)
+            };
 
             // Helper to expand @N references
             fn expand_refs(line: &str, op_ids: &[String]) -> String {
@@ -130,6 +174,11 @@ fn main() {
                 let parts: Vec<&str> = expanded.split_whitespace().collect();
                 match parts.first().copied() {
                     Some("write") => {
+                        // write <file> <start> <end> <participant> <secret-key> <text>
+                        let file = parts[1];
+                        let participant = parts[4];
+                        founder_tree.register_from_write(file, participant);
+
                         let output = pipeline::handle_write(&parts, &mut region_map, &mut oplog);
                         // Extract op-id from JSON output
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&output) {
@@ -156,7 +205,7 @@ fn main() {
                         } else {
                             None
                         };
-                        match reject::handle_reject(parts[1], parts[2], reason.as_deref(), &region_map, &mut oplog) {
+                        match reject::handle_reject(parts[1], parts[2], reason.as_deref(), &region_map, &founder_tree, &mut oplog) {
                             Ok(result) => println!("{}", serde_json::to_string(&result).unwrap()),
                             Err(e) => eprintln!("error: {}", e),
                         }
@@ -183,8 +232,24 @@ fn main() {
                             _ => {}
                         }
                     }
+                    Some("founder") => {
+                        // founder [dir]
+                        let dir = parts.get(1).unwrap_or(&".");
+                        // Strip trailing slash for consistency
+                        let dir_normalized = dir.trim_end_matches('/');
+                        let dir_normalized = if dir_normalized.is_empty() { "." } else { dir_normalized };
+                        match founder_tree.get_founder(dir_normalized) {
+                            Some(f) => println!("{}: founder: {}", dir, f),
+                            None => println!("{}: no founder", dir),
+                        }
+                    }
                     _ => {}
                 }
+            }
+
+            // Save founder tree
+            if founders_path.parent().is_some() {
+                std::fs::write(founders_path, founder_tree.to_json()).ok();
             }
         }
         None => {

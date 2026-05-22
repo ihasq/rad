@@ -25,3 +25,17 @@ pub fn format_keypair(kp: &KeyPair) -> String {
     let secret_b64 = STANDARD.encode(&kp.secret_key);
     format!("public:  {}\nsecret:  {}", kp.public_key, secret_b64)
 }
+
+pub fn keypair_from_secret(secret_b64: &str) -> KeyPair {
+    let secret_bytes = STANDARD.decode(secret_b64).expect("Invalid base64 secret key");
+    // 64バイトフォーマット: 先頭32バイトが秘密鍵、後半32バイトが公開鍵
+    let public_key = STANDARD.encode(&secret_bytes[32..64]);
+    KeyPair {
+        public_key,
+        secret_key: secret_bytes,
+    }
+}
+
+pub fn format_public_key(kp: &KeyPair) -> String {
+    kp.public_key.clone()
+}
