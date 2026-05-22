@@ -15,3 +15,5 @@ tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors"] }
 chrono = "0.4"
 ureq = { version = "2", features = ["json"] }
+rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
+async-trait = "0.1"

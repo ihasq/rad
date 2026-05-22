@@ -10,6 +10,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "aws4fetch": "^1.0.20",
     "commander": "^14.0.3",
     "hono": "^4.12.22",
     "tweetnacl": "^1.0.3"

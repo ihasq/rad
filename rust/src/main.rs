@@ -17,6 +17,7 @@ mod relay;
 mod git;
 mod cmd;
 mod remote;
+mod storage;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
