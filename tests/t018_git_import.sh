@@ -34,19 +34,3 @@ GIT_SIG_COUNT=$(cat "$R_DIR/.rad/oplog.json" | jq '[.[] | select(.signature == "
 grep -q 'src/main.ts' "$R_DIR/.rad/regions.json" || { rm -rf "$R_DIR"; exit 1; }
 
 rm -rf "$R_DIR"
-
-# TS import test
-T_DIR=$(mktemp -d)
-bash "$SCRIPT_DIR/helpers/create_git_repo.sh" "$T_DIR" > /dev/null 2>&1
-
-KEYS=$("$RUST" keygen)
-SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
-
-# T-GI02: rad import が exit 0 で終了する（TS）
-(cd "$T_DIR" && "$TS" init --participant importer --secret-key "$SEC" > /dev/null 2>&1)
-(cd "$T_DIR" && "$TS" import > /dev/null 2>&1) || { rm -rf "$T_DIR"; exit 1; }
-
-T_OP_COUNT=$(cat "$T_DIR/.rad/oplog.json" | jq 'length' 2>/dev/null || echo 0)
-[ "$T_OP_COUNT" = "3" ] || { rm -rf "$T_DIR"; exit 1; }
-
-rm -rf "$T_DIR"

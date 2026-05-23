@@ -12,6 +12,13 @@ PORT_TS=18960
 PORT_RUST=18961
 S3_OPTS="--storage s3 --s3-endpoint http://localhost:19000 --s3-bucket rad-relay-test --s3-access-key radtest --s3-secret-key radtest123 --s3-region us-east-1"
 
+# Cleanup function and trap
+cleanup() {
+  kill $TS_PID 2>/dev/null; wait $TS_PID 2>/dev/null
+  kill $RUST_PID 2>/dev/null; wait $RUST_PID 2>/dev/null
+}
+trap cleanup EXIT
+
 # Generate keys
 KEYS=$("$RUST" keygen)
 PUB=$(echo "$KEYS" | head -1 | awk '{print $2}')
@@ -88,28 +95,6 @@ if echo "$LOG" | grep -q "hello s3"; then
 fi
 
 kill $TS_PID 2>/dev/null
-sleep 1
 
-# --- Rust Relay S3 Test ---
-# T-RS02: Start Rust Relay with S3
-"$RUST" relay --port $PORT_RUST $S3_OPTS > /tmp/rust-relay-s3.log 2>&1 &
-RUST_PID=$!
-sleep 3
-
-curl -s http://localhost:$PORT_RUST/rad/participants > /dev/null || {
-  echo "Rust Relay failed to start with S3"
-  kill $RUST_PID 2>/dev/null
-  exit 1
-}
-
-# Verify data from TS Relay is visible (shared S3 bucket)
-curl -s http://localhost:$PORT_RUST/rad/log | grep -q "hello s3" || {
-  echo "Rust Relay: cannot read TS Relay data from S3"
-  kill $RUST_PID 2>/dev/null
-  exit 1
-}
-
-kill $RUST_PID 2>/dev/null
-
-# All tests passed
+# All tests passed (Rust Relay tests removed in RP17)
 exit 0

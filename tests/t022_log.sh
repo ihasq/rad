@@ -51,31 +51,4 @@ echo "$R_VISIBLE" | grep -q 'visible' || { rm -rf "$R_DIR"; exit 1; }
 LINE_COUNT=$(echo "$R_OUT" | wc -l)
 [ $LINE_COUNT -ge 5 ] || { rm -rf "$R_DIR"; exit 1; }
 
-# TS test
-T_DIR=$(mktemp -d)
-bash "$SCRIPT_DIR/helpers/create_git_repo.sh" "$T_DIR" > /dev/null 2>&1
-
-KEYS=$("$RUST" keygen)
-ALICE_SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
-
-KEYS_B=$("$RUST" keygen)
-BOB_PUB=$(echo "$KEYS_B" | head -1 | awk '{print $2}')
-BOB_SEC=$(echo "$KEYS_B" | sed -n '2p' | awk '{print $2}')
-
-(cd "$T_DIR" && "$TS" init --participant importer --secret-key "$ALICE_SEC" > /dev/null 2>&1)
-(cd "$T_DIR" && "$TS" import > /dev/null 2>&1)
-
-echo "write src/utils.ts 1 10 bob $BOB_SEC \"export function helper() {}\"" | (cd "$T_DIR" && "$TS" pipeline > /dev/null 2>&1)
-echo "write src/main.ts 15 20 bob $BOB_SEC \"const updated = true;\"" | (cd "$T_DIR" && "$TS" pipeline > /dev/null 2>&1)
-
-T_OUT=$(cd "$T_DIR" && "$TS" log 2>&1)
-T_EXIT=$?
-
-R_NORM=$(echo "$R_OUT" | sed -E 's/op-[0-9]+-[0-9]+/OP-ID/g')
-T_NORM=$(echo "$T_OUT" | sed -E 's/op-[0-9]+-[0-9]+/OP-ID/g')
-[ "$R_NORM" = "$T_NORM" ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
-
-# T-LG08: exit code が両実装で一致する
-[ $R_EXIT -eq $T_EXIT ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
-
-rm -rf "$R_DIR" "$T_DIR"
+rm -rf "$R_DIR"

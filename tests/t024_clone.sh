@@ -1,5 +1,6 @@
 #!/bin/bash
 RUST="$(realpath "$1")"
+TS="$(realpath "$2")"
 
 PORT=18950
 BASE="http://localhost:$PORT"

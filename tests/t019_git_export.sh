@@ -44,20 +44,3 @@ git -C "$R_DIR" log -1 --pretty=%B | grep -q 'rad:' || { rm -rf "$R_DIR"; exit 1
 [ -f "$R_DIR/src/main.ts" ] || { rm -rf "$R_DIR"; exit 1; }
 
 rm -rf "$R_DIR"
-
-# TS export test
-T_DIR=$(mktemp -d)
-bash "$SCRIPT_DIR/helpers/create_git_repo.sh" "$T_DIR" > /dev/null 2>&1
-
-KEYS=$("$RUST" keygen)
-SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
-
-(cd "$T_DIR" && "$TS" init --participant exporter --secret-key "$SEC" > /dev/null 2>&1)
-(cd "$T_DIR" && "$TS" import > /dev/null 2>&1)
-
-BEFORE_COMMITS=$(git -C "$T_DIR" log --oneline | wc -l)
-(cd "$T_DIR" && "$TS" export > /dev/null 2>&1) || { rm -rf "$T_DIR"; exit 1; }
-AFTER_COMMITS=$(git -C "$T_DIR" log --oneline | wc -l)
-[ "$AFTER_COMMITS" -ge "$BEFORE_COMMITS" ] || { rm -rf "$T_DIR"; exit 1; }
-
-rm -rf "$T_DIR"

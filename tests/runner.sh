@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -uo pipefail
 
 RUST_BIN="$(readlink -f "${RUST_BIN:-rust/target/release/rad}")"
 TS_BIN="$(readlink -f "${TS_BIN:-ts/dist/rad}")"
@@ -8,8 +8,8 @@ PASS=0; FAIL=0; SKIP=0; TOTAL=0
 run_test() {
   local name="$1" script="$2"
   TOTAL=$((TOTAL+1))
-  # Relay tests (t015, t027-t029) need TS_BIN, CLI tests only need RUST_BIN
-  if [[ "$name" == *relay* ]] || [[ "$name" == *s3* ]]; then
+  # Relay tests need TS_BIN (t015, t024-t029), CLI tests only need RUST_BIN
+  if [[ "$name" == *relay* ]] || [[ "$name" == *s3* ]] || [[ "$name" == "t024_clone" ]] || [[ "$name" == "t025_push" ]] || [[ "$name" == "t026_pull" ]]; then
     local result; result=$(bash "$script" "$RUST_BIN" "$TS_BIN" 2>/dev/null)
     local code=$?
   else

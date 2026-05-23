@@ -3,6 +3,11 @@ RUST="$1"; TS="$2"
 
 # TS Relay をバックグラウンドで起動
 PORT=18923
+
+# Cleanup function and trap
+cleanup() { kill $RELAY_PID 2>/dev/null; wait $RELAY_PID 2>/dev/null; }
+trap cleanup EXIT
+
 "$TS" relay --port $PORT > /tmp/relay.log 2>&1 &
 RELAY_PID=$!
 sleep 2  # 起動待ち
