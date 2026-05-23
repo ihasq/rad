@@ -132,6 +132,12 @@ export class RadWasm {
             return -1;
           }
         },
+        host_get_timestamp: (): bigint => {
+          return BigInt(Date.now());
+        },
+        host_random_u64: (): bigint => {
+          return BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+        },
         _allocResult: (size: number): number => {
           const exports = importObject.env as any;
           return exports._radAlloc ? exports._radAlloc(size) : 0;

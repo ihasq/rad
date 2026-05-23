@@ -33,4 +33,10 @@ extern "C" {
     /// ストレージからオブジェクトを削除
     /// 戻り値: 0 = success, -1 = error
     pub fn storage_delete(key_ptr: *const u8, key_len: usize) -> i32;
+
+    /// 現在のタイムスタンプ（ミリ秒）を取得
+    pub fn host_get_timestamp() -> u64;
+
+    /// ランダムな u64 値を取得
+    pub fn host_random_u64() -> u64;
 }

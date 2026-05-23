@@ -3,12 +3,15 @@ use ed25519_dalek::{SigningKey, Signer};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
-/// signature フィールドを除外し、キー昇順ソートのコンパクト JSON を生成
+/// signature, status, id, timestamp フィールドを除外し、キー昇順ソートのコンパクト JSON を生成
+/// クライアントは id/timestamp なしで署名し、WASM が id/timestamp を生成する
 pub fn canonicalize(op_json: &str) -> String {
     let mut val: Value = serde_json::from_str(op_json).unwrap();
     if let Value::Object(ref mut map) = val {
         map.remove("signature");
         map.remove("status");
+        map.remove("id");
+        map.remove("timestamp");
         // reason が存在しなければ null を挿入
         if !map.contains_key("reason") {
             map.insert("reason".to_string(), Value::Null);

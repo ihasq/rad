@@ -9,7 +9,6 @@ import {
   toErrorResponse,
   type WasmResult
 } from './transform';
-import { generateOpId, currentTimestamp } from './idgen';
 
 export function createRelayApp(wasm: RadWasm) {
   const app = new Hono();
@@ -33,20 +32,13 @@ export function createRelayApp(wasm: RadWasm) {
 
   // 操作送信
   app.post('/rad/operations', async (c) => {
-    const body = JSON.parse(await c.req.text());
-
-    // === Relay の責務: ID, timestamp, status, reason を注入 ===
-    body.id = generateOpId();
-    body.timestamp = currentTimestamp();
-    body.status = 'visible';
-    if (body.reason === undefined) body.reason = null;
-
-    const raw = wasm.submitOp(JSON.stringify(body));
+    const body = await c.req.text();
+    // Relay は何も注入しない。クライアントの JSON をそのまま WASM に渡す。
+    const raw = wasm.submitOp(body);
     const result: WasmResult = JSON.parse(raw);
     if (!result.ok) {
       return c.json(toErrorResponse(result), wasmToHttpStatus(result));
     }
-    // === Relay の責務: 内部スキーマ → OpenAPI スキーマ ===
     return c.json(toSubmitOpResponse(result.data), 201);
   });
 

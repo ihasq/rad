@@ -93,6 +93,20 @@ fn error_response(message: &str, code: &str) -> String {
 }
 
 // ==================
+// ID/Timestamp 生成（ホスト関数経由）
+// ==================
+
+fn generate_op_id() -> String {
+    let ts = unsafe { host::host_get_timestamp() };
+    let rand = unsafe { host::host_random_u64() };
+    format!("op-{}-{}", ts, rand % 10000)
+}
+
+fn current_timestamp() -> u64 {
+    unsafe { host::host_get_timestamp() }
+}
+
+// ==================
 // WASM Export 関数
 // ==================
 
@@ -177,36 +191,60 @@ pub extern "C" fn rad_join(input_ptr: *const u8, input_len: usize) -> i32 {
 }
 
 /// 操作送信
-/// 入力: Operation JSON (Relay が id/timestamp/status を注入済み)
+/// 入力: SubmitInput JSON (id/timestamp なし、signature 付き)
 /// 出力: {ok: true, data: {"id": "...", "status": "visible"}}
 #[no_mangle]
 pub extern "C" fn rad_submit_op(input_ptr: *const u8, input_len: usize) -> i32 {
-    let input = unsafe { read_string(input_ptr, input_len) };
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct SubmitInput {
+        participant_id: String,
+        #[serde(rename = "type")]
+        op_type: String,
+        region_id: String,
+        #[serde(default)]
+        content: String,
+        reason: Option<String>,
+        signature: String,
+    }
+
+    let input_str = unsafe { read_string(input_ptr, input_len) };
 
     let result = STATE.with(|s| {
         let mut state = s.borrow_mut();
         let state = state.as_mut().unwrap();
 
-        // JSON パース
-        let mut op: Operation = match serde_json::from_str(&input) {
-            Ok(v) => v,
-            Err(e) => return Err((format!("Invalid JSON: {}", e), "INVALID_JSON".to_string())),
-        };
+        // JSON パース（SubmitInput: id/timestamp なし）
+        let input: SubmitInput = serde_json::from_str(&input_str)
+            .map_err(|e| (format!("Invalid JSON: {}", e), "INVALID_JSON".to_string()))?;
 
-        // 署名検証
+        // 署名検証: 入力 JSON をそのまま canonicalize
         let participant = state.participants.iter()
-            .find(|p| p.id == op.participant_id)
+            .find(|p| p.id == input.participant_id)
             .ok_or(("Participant not found".to_string(), "NOT_FOUND".to_string()))?;
 
-        if !verify_operation(&input, &participant.public_key) {
+        if !verify_operation(&input_str, &participant.public_key) {
             return Err(("Invalid signature".to_string(), "INVALID_SIGNATURE".to_string()));
         }
 
-        // デフォルト値設定（Relay が未送信の場合のフォールバック）
-        if op.id.is_empty() {
-            op.id = format!("op-{}-{}", op.timestamp, state.oplog.len());
-        }
-        op.status = OpStatus::Visible;
+        // WASM がホスト関数経由で id/timestamp を生成
+        let op_type = match input.op_type.as_str() {
+            "write" => OpType::Write,
+            "delete" => OpType::Delete,
+            _ => return Err(("Invalid operation type".to_string(), "INVALID_JSON".to_string())),
+        };
+
+        let op = Operation {
+            id: generate_op_id(),
+            participant_id: input.participant_id,
+            region_id: input.region_id,
+            op_type,
+            content: input.content,
+            reason: input.reason,
+            signature: input.signature,
+            timestamp: current_timestamp(),
+            status: OpStatus::Visible,
+        };
 
         // OpLog に追加
         state.oplog.append(op.clone());
@@ -235,39 +273,52 @@ pub extern "C" fn rad_submit_op(input_ptr: *const u8, input_len: usize) -> i32 {
 }
 
 /// Accept 操作
-/// 入力: {"operationId": "...", "participantId": "...", "signature": "..."}
+/// 入力: AcceptInput JSON (operationId, participantId, signature)
 /// 出力: {ok: true, data: {"id": "...", "status": "accepted", "acceptedBy": "...", "acceptedAt": 123}}
 #[no_mangle]
 pub extern "C" fn rad_accept(input_ptr: *const u8, input_len: usize) -> i32 {
-    let input = unsafe { read_string(input_ptr, input_len) };
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct AcceptInput {
+        participant_id: String,
+        operation_id: String,
+        signature: String,
+    }
+
+    let input_str = unsafe { read_string(input_ptr, input_len) };
 
     let result = STATE.with(|s| {
         let mut state = s.borrow_mut();
         let state = state.as_mut().unwrap();
 
-        let json: serde_json::Value = match serde_json::from_str(&input) {
-            Ok(v) => v,
-            Err(_) => return Err(("Invalid JSON".to_string(), "INVALID_JSON".to_string())),
-        };
+        // JSON パース
+        let input: AcceptInput = serde_json::from_str(&input_str)
+            .map_err(|e| (format!("Invalid JSON: {}", e), "INVALID_JSON".to_string()))?;
 
-        let op_id = json["operationId"].as_str().unwrap_or("");
-        let participant_id = json["participantId"].as_str().unwrap_or("");
+        // 署名検証
+        let participant = state.participants.iter()
+            .find(|p| p.id == input.participant_id)
+            .ok_or(("Participant not found".to_string(), "NOT_FOUND".to_string()))?;
+
+        if !verify_operation(&input_str, &participant.public_key) {
+            return Err(("Invalid signature".to_string(), "INVALID_SIGNATURE".to_string()));
+        }
 
         // ステータス更新
-        state.oplog.set_status(op_id, OpStatus::Accepted);
+        state.oplog.set_status(&input.operation_id, OpStatus::Accepted);
 
         // ストレージに保存
-        if let Some(op) = state.oplog.get_by_id(op_id) {
-            let key = format!("operations/{}", op_id);
+        if let Some(op) = state.oplog.get_by_id(&input.operation_id) {
+            let key = format!("operations/{}", input.operation_id);
             let data = serde_json::to_string(&op).unwrap();
             let _ = state.backend.put(&key, &data);
         }
 
         Ok(serde_json::json!({
-            "id": op_id,
+            "id": input.operation_id,
             "status": "accepted",
-            "acceptedBy": participant_id,
-            "acceptedAt": 1234567890
+            "acceptedBy": input.participant_id,
+            "acceptedAt": current_timestamp()
         }))
     });
 
