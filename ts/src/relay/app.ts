@@ -20,8 +20,21 @@ export function createRelayApp(wasm: RadWasm) {
 
   // 操作
   app.post('/rad/operations', async (c) => {
-    const body = await c.req.text();
-    const result = wasm.submitOp(body);
+    const body = JSON.parse(await c.req.text());
+    // Relay が id と timestamp を生成（WASM Core が期待するフィールド）
+    if (!body.id) {
+      body.id = 'op-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    }
+    if (!body.timestamp) {
+      body.timestamp = Date.now();
+    }
+    if (!body.status) {
+      body.status = 'visible';
+    }
+    if (body.reason === undefined) {
+      body.reason = null;
+    }
+    const result = wasm.submitOp(JSON.stringify(body));
     const parsed = JSON.parse(result);
     if (parsed.error) {
       const status = parsed.code === 'INVALID_SIGNATURE' ? 403 : 400;
