@@ -27,7 +27,7 @@ ALICE_SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
 # Register alice via API
 curl -s -X POST "$BASE/rad/participants" \
   -H "Content-Type: application/json" \
-  -d "{\"participantId\":\"alice\",\"publicKey\":\"$ALICE_PUB\",\"isFounder\":true}" \
+  -d "{\"publicKey\":\"$ALICE_PUB\",\"displayName\":\"alice\"}" \
   > /dev/null
 
 # Alice clones
@@ -60,7 +60,7 @@ BOB_SEC=$(echo "$KEYS_B" | sed -n '2p' | awk '{print $2}')
 
 curl -s -X POST "$BASE/rad/participants" \
   -H "Content-Type: application/json" \
-  -d "{\"participantId\":\"bob\",\"publicKey\":\"$BOB_PUB\",\"isFounder\":false}" \
+  -d "{\"publicKey\":\"$BOB_PUB\",\"displayName\":\"bob\"}" \
   > /dev/null
 
 # Bob makes a write (visible)

@@ -25,29 +25,26 @@ ALICE_PUB=$(echo "$KEYS" | head -1 | awk '{print $2}')
 ALICE_SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
 
 # Register alice
-curl -s -X POST "$BASE/rad/participants" \
+ALICE_JOIN=$(curl -s -X POST "$BASE/rad/participants" \
   -H "Content-Type: application/json" \
-  -d "{\"participantId\":\"alice\",\"publicKey\":\"$ALICE_PUB\",\"isFounder\":true}" \
-  > /dev/null
+  -d "{\"publicKey\":\"$ALICE_PUB\",\"displayName\":\"alice\"}")
+ALICE_ID=$(echo "$ALICE_JOIN" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
 
-# Alice creates a write operation via API
+# Alice creates a signed write operation via API
 OP_JSON=$(cat <<EOF
 {
-  "id": "op-1000000000-0",
-  "participantId": "alice",
+  "participantId": "$ALICE_ID",
   "regionId": "src/main.ts:1-10",
   "type": "write",
-  "content": "const x = 1;",
-  "signature": "test-sig",
-  "timestamp": 1000000000,
-  "status": "accepted"
+  "content": "const x = 1;"
 }
 EOF
 )
+SIGNED_OP=$(echo "$OP_JSON" | "$RUST" sign --secret-key "$ALICE_SEC")
 
 curl -s -X POST "$BASE/rad/operations" \
   -H "Content-Type: application/json" \
-  -d "$OP_JSON" \
+  -d "$SIGNED_OP" \
   > /dev/null
 
 # Bob keys
