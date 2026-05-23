@@ -220,8 +220,10 @@ pub extern "C" fn rad_submit_op(input_ptr: *const u8, input_len: usize) -> i32 {
             .map_err(|e| (format!("Invalid JSON: {}", e), "INVALID_JSON".to_string()))?;
 
         // 署名検証: 入力 JSON をそのまま canonicalize
+        // Lookup participant by ID or displayName for backward compatibility
         let participant = state.participants.iter()
-            .find(|p| p.id == input.participant_id)
+            .find(|p| p.id == input.participant_id ||
+                      p.display_name.as_ref().map(|n| n == &input.participant_id).unwrap_or(false))
             .ok_or(("Participant not found".to_string(), "NOT_FOUND".to_string()))?;
 
         if !verify_operation(&input_str, &participant.public_key) {
@@ -338,8 +340,10 @@ pub extern "C" fn rad_accept(input_ptr: *const u8, input_len: usize) -> i32 {
             .map_err(|e| (format!("Invalid JSON: {}", e), "INVALID_JSON".to_string()))?;
 
         // 署名検証
+        // Lookup participant by ID or displayName for backward compatibility
         let participant = state.participants.iter()
-            .find(|p| p.id == input.participant_id)
+            .find(|p| p.id == input.participant_id ||
+                      p.display_name.as_ref().map(|n| n == &input.participant_id).unwrap_or(false))
             .ok_or(("Participant not found".to_string(), "NOT_FOUND".to_string()))?;
 
         if !verify_operation(&input_str, &participant.public_key) {
