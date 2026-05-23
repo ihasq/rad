@@ -100,18 +100,34 @@ impl RemoteClient {
     }
 
     pub fn submit_operation(&self, operation: &Operation) -> Result<SubmitResponse, String> {
-        // Convert Operation to JSON matching the API format
-        let body = serde_json::json!({
-            "id": operation.id,
+        // RP19-V3: Use SubmitInput format (no id/timestamp/status)
+        // WASM generates id/timestamp internally
+        use crate::types::OpType;
+
+        let op_type_str = format!("{:?}", operation.op_type).to_lowercase();
+
+        let mut body = serde_json::json!({
             "participantId": operation.participant_id,
-            "regionId": operation.region_id,
-            "type": format!("{:?}", operation.op_type).to_lowercase(),
+            "type": op_type_str,
             "content": operation.content,
-            "reason": operation.reason,
             "signature": operation.signature,
-            "timestamp": operation.timestamp,
-            "status": format!("{:?}", operation.status).to_lowercase(),
         });
+
+        // Add regionId for write/delete, targetOperationId for reject/approve
+        let body_obj = body.as_object_mut().unwrap();
+        match operation.op_type {
+            OpType::Write | OpType::Delete => {
+                body_obj.insert("regionId".to_string(), serde_json::json!(operation.region_id));
+            }
+            OpType::Reject | OpType::Approve => {
+                body_obj.insert("targetOperationId".to_string(), serde_json::json!(operation.region_id));
+            }
+        }
+
+        // Add reason if present
+        if let Some(ref reason) = operation.reason {
+            body_obj.insert("reason".to_string(), serde_json::json!(reason));
+        }
 
         let url = format!("{}/rad/operations", self.url);
         let resp = ureq::post(&url)
