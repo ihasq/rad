@@ -13,7 +13,7 @@ export interface CodeRegion {
   readonly ownerId: string;
 }
 
-export type OpType = 'write' | 'approve' | 'reject';
+export type OpType = 'write' | 'approve' | 'reject' | 'delete';
 
 export type OpStatus = 'visible' | 'accepted' | 'rejected' | 'discarded';
 

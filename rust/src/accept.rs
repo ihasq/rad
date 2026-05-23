@@ -1,6 +1,7 @@
-use crate::types::OpStatus;
+use crate::types::{OpStatus, OpType};
 use crate::oplog::OpLog;
 use crate::region::RegionMap;
+use crate::founder::FounderTree;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -16,10 +17,11 @@ pub fn handle_accept(
     op_id: &str,
     leader_id: &str,
     region_map: &RegionMap,
+    founder_tree: &FounderTree,
     oplog: &mut OpLog,
 ) -> Result<AcceptResult, String> {
     // まずデータを取得してクローン
-    let region_id = {
+    let (region_id, op_type) = {
         let op = oplog.get_by_id(op_id)
             .ok_or_else(|| "Operation not found".to_string())?;
 
@@ -28,14 +30,25 @@ pub fn handle_accept(
             return Err(format!("Cannot accept: status is {:?}", op.status));
         }
 
-        op.region_id.clone()
+        (op.region_id.clone(), op.op_type.clone())
     };
 
-    // Leader 検証
-    let owner = region_map.get_owner_by_region_id(&region_id)
-        .ok_or_else(|| "Region not found".to_string())?;
-    if owner != leader_id {
-        return Err("Only the Leader can accept".to_string());
+    // Delete の場合は file founder 検証
+    if op_type == OpType::Delete {
+        // region_id から file_path を抽出（"file:src/main.ts" → "src/main.ts"）
+        let file_path = region_id.strip_prefix("file:").unwrap_or(&region_id);
+
+        // file founder のみが delete を accept できる
+        if !founder_tree.can_accept_delete(file_path, leader_id) {
+            return Err(format!("Only file founder can accept delete for '{}'", file_path));
+        }
+    } else {
+        // 通常の write/reject の Leader 検証
+        let owner = region_map.get_owner_by_region_id(&region_id)
+            .ok_or_else(|| "Region not found".to_string())?;
+        if owner != leader_id {
+            return Err("Only the Leader can accept".to_string());
+        }
     }
 
     // accept 実行

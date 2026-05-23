@@ -25,6 +25,7 @@ pub enum OpType {
     Write,
     Approve,
     Reject,
+    Delete,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

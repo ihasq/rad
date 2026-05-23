@@ -7,6 +7,7 @@ import { OpLog } from './oplog';
 import { handleWrite, handleChain } from './pipeline';
 import { handleAccept } from './accept';
 import { handleReject } from './reject';
+import { handleDelete } from './delete';
 import { initProject } from './init';
 import { FounderTree } from './founder';
 import { RadStore } from './store';
@@ -173,6 +174,8 @@ program
           const file = parts[1];
           const participant = parts[4];
           founderTree.registerFromWrite(file, participant);
+          // ファイル Founder も登録（最初の write 時のみ）
+          founderTree.registerFileFounder(file, participant);
 
           const output = handleWrite(parts, regionMap, oplog);
           // Extract op-id from JSON output
@@ -254,6 +257,42 @@ program
             console.log(dir + ': founder: ' + founder);
           } else {
             console.log(dir + ': no founder');
+          }
+          break;
+        }
+        case 'file-founder': {
+          // file-founder <file-path>
+          if (parts.length < 2) {
+            console.error('usage: file-founder <file-path>');
+            break;
+          }
+          const filePath = parts[1];
+          const fileFounder = founderTree.getFileFounder(filePath);
+          if (fileFounder) {
+            console.log(filePath + ': file-founder: ' + fileFounder);
+          } else {
+            console.log(filePath + ': no file-founder');
+          }
+          break;
+        }
+        case 'delete': {
+          // delete <file-path> <participant> <secret-key>
+          if (parts.length < 4) {
+            console.error('usage: delete <file-path> <participant> <secret-key>');
+            break;
+          }
+          const filePath = parts[1];
+          const participant = parts[2];
+          const secretKey = parts[3];
+
+          try {
+            const result = handleDelete(filePath, participant, secretKey, founderTree, oplog);
+            console.log(JSON.stringify(result));
+            if (store) {
+              store.saveOplog(oplog.getAllOperations());
+            }
+          } catch (e) {
+            console.error('error:', (e as Error).message);
           }
           break;
         }

@@ -41,7 +41,7 @@ info:
     - **Leader**: あるコード領域に最初に write した参加者。その領域の変更に対する責任を負う。
     - **Follower**: あるコード領域に後から write した参加者。Leader のコードを自由に上書きできる。
     - **Code Region**: ファイル内の行範囲。LSP スコープに対応する。Leader / Follower はこの単位で決定される。
-    - **Operation**: write / reject のいずれか。Ed25519 で署名される。
+    - **Operation**: write / reject / delete のいずれか。Ed25519 で署名される。
     - **Relay**: 参加者間の操作を中継する通信ノード。Founder が兼ねることが一般的。参加者としての判断権は Founder の資格に由来し、Relay の機能には由来しない。
     
     ## 2段階承認モデル
@@ -173,15 +173,16 @@ paths:
   /rad/{repoId}/operations:
     post:
       operationId: submitOperation
-      summary: 操作を送信する（write / approve / reject）
+      summary: 操作を送信する（write / approve / reject / delete）
       description: |
         署名付き操作を Relay に送信する。
         Relay は署名を検証し、受理した場合 201 Created を返す。
         write は即座に全参加者に可視化される（visible 状態）。
         正史への採用は Leader が accept エンドポイントで行う。
-        
+
         **write**: コード領域への書き込み。即座に visible になる。正史未確定。
         **reject**: 他の参加者の操作を拒否する。Leader → Follower のリジェクトは reason 必須。
+        **delete**: ファイル/領域の削除提案。visible 状態で提出される。ファイルの Founder のみが accept 可能。
       requestBody:
         required: true
         content:
@@ -261,13 +262,17 @@ paths:
       description: |
         コード領域の Leader が、visible 状態の write を accept（正史に採用）する。
         accept された write のみがコンパクション時に R2 に永続化される。
-        
+
         write はコード領域内で直列チェーンを形成する（A → B → C）。
         accept のルール:
         - B を accept → B が正史。C は B の上に構築されているため visible のまま残る。
         - C を accept（B を飛ばす = 階段飛ばし）→ C が正史。B は消滅する。
         - B を reject → B の上に構築された C は基盤を失い、再審査が必要。
-        
+
+        **delete の accept**: ファイルの Founder（作成者）のみが delete を accept できる。
+        Founder 自身の delete の場合、ディレクトリ Founder が accept する。
+        accept された delete はコンパクション時にファイルを削除する。
+
         Leader 以外の参加者が accept を試みた場合は 403 を返す。
         既に accepted / rejected な操作に対する accept は 409 を返す。
       requestBody:
@@ -504,6 +509,11 @@ components:
         isFounder:
           type: boolean
           description: プロジェクトの Founder であるか
+        foundedFiles:
+          type: array
+          items:
+            type: string
+          description: この参加者が Founder であるファイルパス一覧
         joinedAt:
           type: integer
 
@@ -515,8 +525,8 @@ components:
           type: string
         type:
           type: string
-          enum: [write, reject]
-          description: write = コード書き込み（即座に visible）、reject = 拒否（Leader → Follower は reason 必須）
+          enum: [write, reject, delete]
+          description: write = コード書き込み（即座に visible）、reject = 拒否（Leader → Follower は reason 必須）、delete = ファイル/領域削除提案
         regionId:
           type: string
           description: 対象コード領域 ID（write 時必須）
@@ -605,7 +615,7 @@ components:
           type: string
         type:
           type: string
-          enum: [write, reject]
+          enum: [write, reject, delete]
         regionId:
           type: string
         targetOperationId:
@@ -641,6 +651,9 @@ components:
         ownerId:
           type: string
           description: この領域の Leader（最初に write した参加者の ID）
+        fileFounder:
+          type: string
+          description: このファイルの Founder（最初に create した参加者の ID）
 
     FileContent:
       type: object

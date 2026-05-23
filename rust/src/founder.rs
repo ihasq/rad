@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize)]
 pub struct FounderTree {
     founders: HashMap<String, String>, // dir_path → participant_id
+    file_founders: HashMap<String, String>, // file_path → participant_id (file creator)
     root_founder: String,
 }
 
@@ -13,6 +14,7 @@ impl FounderTree {
         founders.insert(".".to_string(), root_founder.to_string());
         Self {
             founders,
+            file_founders: HashMap::new(),
             root_founder: root_founder.to_string(),
         }
     }
@@ -71,7 +73,7 @@ impl FounderTree {
     }
 
     /// ファイルが属するディレクトリの Founder を取得
-    pub fn get_file_founder(&self, file_path: &str) -> Option<&str> {
+    pub fn get_dir_founder_for_file(&self, file_path: &str) -> Option<&str> {
         let dir = match file_path.rfind('/') {
             Some(pos) => &file_path[..pos],
             None => ".", // root直下
@@ -79,15 +81,33 @@ impl FounderTree {
         self.get_founder(dir)
     }
 
+    /// ファイルを最初に create した参加者（file Founder）を登録
+    pub fn register_file_founder(&mut self, file_path: &str, participant: &str) {
+        self.file_founders
+            .entry(file_path.to_string())
+            .or_insert_with(|| participant.to_string());
+    }
+
+    /// ファイルの Founder（最初に create した参加者）を取得
+    pub fn get_file_founder(&self, file_path: &str) -> Option<&str> {
+        self.file_founders.get(file_path).map(|s| s.as_str())
+    }
+
+    /// delete 操作を accept できるかチェック
+    /// file founder 自身の delete → ディレクトリ founder が accept 必要
+    /// 他者の delete → file founder が accept
+    pub fn can_accept_delete(&self, file_path: &str, participant: &str) -> bool {
+        match self.get_file_founder(file_path) {
+            Some(founder) => founder == participant,
+            None => false,
+        }
+    }
+
     pub fn to_json(&self) -> String {
-        serde_json::to_string(&self.founders).unwrap()
+        serde_json::to_string(self).unwrap()
     }
 
     pub fn from_json(json: &str, root_founder: &str) -> Self {
-        let founders: HashMap<String, String> = serde_json::from_str(json).unwrap_or_else(|_| HashMap::new());
-        Self {
-            founders,
-            root_founder: root_founder.to_string(),
-        }
+        serde_json::from_str(json).unwrap_or_else(|_| Self::new(root_founder))
     }
 }

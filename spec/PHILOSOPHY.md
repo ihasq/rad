@@ -88,28 +88,37 @@ Leader が C を accept し B を飛ばす（階段飛ばし）場合、B は消
 
 ---
 
-## 原則 6: Founder はディレクトリツリーの権力チェーン
+## 原則 6: Founder はディレクトリ + ファイルの権力チェーン
 
-Founder は唯一の存在ではない。ディレクトリツリーの各階層に Founder が存在し、直列の権力チェーンを形成する。
+Founder は唯一の存在ではない。ディレクトリツリーの各階層に Founder が存在し、さらにファイルレベルでも Founder が存在する。これらは直列の権力チェーンを形成する。
 
 ```
 / (root Founder: プロジェクトを作成した者)
-├── src/ (src Founder: src/ に最初に write した者)
-│   ├── components/ (components Founder)
-│   └── lib/ (lib Founder)
-└── tests/ (tests Founder)
+├── src/ (dir Founder: src/ に最初に write した者)
+│   ├── main.ts (file Founder: main.ts を最初に create した者)
+│   └── utils.ts (file Founder: utils.ts を最初に create した者)
+└── tests/ (dir Founder: tests/ に最初に write した者)
+    └── test.ts (file Founder: test.ts を最初に create した者)
 ```
+
+Founder はディレクトリだけでなくファイルにも存在する。ファイルを最初に create（write で新規作成）した参加者がそのファイルの Founder であり、そのファイルの全コード領域の初期 Leader となる。
+
+ファイル Founder はディレクトリ Founder の Follower である。ディレクトリ Founder はファイル Founder に対して reason なしでリジェクトできる（上位→下位）。
 
 上位ディレクトリの Founder は下位ディレクトリの Founder に対して Leader である。これはコード領域の Leader/Follower モデルがディレクトリ階層に再帰的に適用されたものであり、別の概念ではない。
 
 ```
 root Founder が src Founder をリジェクト → reason 不要（上位は下位の Leader）
 src Founder が root Founder の書き込みをリジェクト → reason 必須（下位は上位の Follower）
+dir Founder が file Founder をリジェクト → reason 不要（上位は下位の Leader）
+file Founder が dir Founder の書き込みをリジェクト → reason 必須（下位は上位の Follower）
 ```
 
 root Founder はプロジェクトの基盤（インフラ、ストレージ、CI）を提供した者であり、全ディレクトリの初期 Leader でもある。しかし、あるディレクトリに最初に write した参加者がそのディレクトリの Founder となり、そのスコープ内では Leader として振る舞う。
 
-Founder の権力はプロトコルが付与する特権ではなく、「そのディレクトリに最初に責任を負った」という事実から生じる。他の参加者が Founder の判断に不同意であれば、コードベースを持ち出して別の基盤に移る自由がある。
+ファイルの削除（delete）は特別な操作である。delete は「このファイルに対する責任を放棄する」提案であり、ファイルの Founder のみが accept できる。ファイルの Founder 自身が delete を提案した場合、ディレクトリ Founder が accept する。delete は visible 状態で提出され、accept されるまでファイルは削除されない。accept された delete はコンパクション時にファイルを削除する。
+
+Founder の権力はプロトコルが付与する特権ではなく、「そのディレクトリまたはファイルに最初に責任を負った」という事実から生じる。他の参加者が Founder の判断に不同意であれば、コードベースを持ち出して別の基盤に移る自由がある。
 
 ---
 

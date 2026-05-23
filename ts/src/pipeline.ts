@@ -63,7 +63,15 @@ export function handleChain(parts: string[], oplog: OpLog): string {
   const file = parts[1];
   const start = parseInt(parts[2]);
   const end = parseInt(parts[3]);
-  const chain = oplog.getChain(file, start, end);
+
+  // 通常の領域チェーンに加え、ファイル全体の操作（delete等）も含める
+  const regionId = `${file}:${start}-${end}`;
+  const filePrefix = `file:${file}`;
+
+  const allOps = oplog.all();
+  const chain = allOps
+    .filter(op => op.regionId === regionId || op.regionId === filePrefix)
+    .sort((a, b) => a.timestamp - b.timestamp);
 
   // ステータスカウント
   const visibleCount = chain.filter(op => op.status === 'visible').length;
@@ -74,9 +82,10 @@ export function handleChain(parts: string[], oplog: OpLog): string {
     ? `${file}:${start}-${end} (${chain.length} writes, all visible)\n`
     : `${file}:${start}-${end} (${chain.length} writes)\n`;
 
-  // 各 write の1行表示
+  // 各操作の1行表示
   for (const op of chain) {
-    result += `  ${op.id} [${op.status}] ${op.participantId}  t=${op.timestamp}  "${op.content}"\n`;
+    const typeStr = op.type || 'write';
+    result += `  ${op.id} [${op.status}] [${typeStr}] ${op.participantId}  t=${op.timestamp}  "${op.content}"\n`;
   }
 
   return result.trimEnd();

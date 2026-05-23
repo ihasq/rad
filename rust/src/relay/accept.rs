@@ -84,8 +84,9 @@ pub async fn accept(
     // handleAccept を呼び出し
     let mut oplog = state.oplog.lock().unwrap();
     let region_map = state.region_map.lock().unwrap();
+    let founder_tree = state.founder_tree.lock().unwrap();
 
-    match handle_accept(&body.operation_id, &body.participant_id, &region_map, &mut oplog) {
+    match handle_accept(&body.operation_id, &body.participant_id, &region_map, &founder_tree, &mut oplog) {
         Ok(result) => {
             drop(oplog);
             drop(region_map);

@@ -10,6 +10,7 @@ mod oplog;
 mod pipeline;
 mod accept;
 mod reject;
+mod delete;
 mod init;
 mod founder;
 mod store;
@@ -250,6 +251,8 @@ async fn main() {
                         let file = parts[1];
                         let participant = parts[4];
                         founder_tree.register_from_write(file, participant);
+                        // ファイル Founder も登録（最初の write 時のみ）
+                        founder_tree.register_file_founder(file, participant);
 
                         let output = pipeline::handle_write(&parts, &mut region_map, &mut oplog);
                         // Extract op-id from JSON output
@@ -272,7 +275,7 @@ async fn main() {
                     }
                     Some("accept") => {
                         // accept <op-id> <leader> <secret-key>
-                        match accept::handle_accept(parts[1], parts[2], &region_map, &mut oplog) {
+                        match accept::handle_accept(parts[1], parts[2], &region_map, &founder_tree, &mut oplog) {
                             Ok(result) => {
                                 println!("{}", serde_json::to_string(&result).unwrap());
                                 if let Some(ref s) = store {
@@ -333,6 +336,38 @@ async fn main() {
                         match founder_tree.get_founder(dir_normalized) {
                             Some(f) => println!("{}: founder: {}", dir, f),
                             None => println!("{}: no founder", dir),
+                        }
+                    }
+                    Some("file-founder") => {
+                        // file-founder <file-path>
+                        if parts.len() < 2 {
+                            eprintln!("usage: file-founder <file-path>");
+                            continue;
+                        }
+                        let file_path = parts[1];
+                        match founder_tree.get_file_founder(file_path) {
+                            Some(f) => println!("{}: file-founder: {}", file_path, f),
+                            None => println!("{}: no file-founder", file_path),
+                        }
+                    }
+                    Some("delete") => {
+                        // delete <file-path> <participant> <secret-key>
+                        if parts.len() < 4 {
+                            eprintln!("usage: delete <file-path> <participant> <secret-key>");
+                            continue;
+                        }
+                        let file_path = parts[1];
+                        let participant = parts[2];
+                        let secret_key = parts[3];
+
+                        match delete::handle_delete(file_path, participant, secret_key, &founder_tree, &mut oplog) {
+                            Ok(result) => {
+                                println!("{}", serde_json::to_string(&result).unwrap());
+                                if let Some(ref s) = store {
+                                    s.save_oplog(&oplog).ok();
+                                }
+                            }
+                            Err(e) => eprintln!("error: {}", e),
                         }
                     }
                     _ => {}

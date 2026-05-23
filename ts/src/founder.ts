@@ -1,9 +1,11 @@
 export class FounderTree {
   private founders: Map<string, string>; // dir_path → participant_id
+  private fileFounders: Map<string, string>; // file_path → participant_id (file creator)
   private rootFounder: string;
 
   constructor(rootFounder: string) {
     this.founders = new Map();
+    this.fileFounders = new Map();
     this.founders.set('.', rootFounder);
     this.rootFounder = rootFounder;
   }
@@ -53,10 +55,25 @@ export class FounderTree {
     return this.rootFounder;
   }
 
-  getFileFounder(filePath: string): string | null {
+  getDirFounderForFile(filePath: string): string | null {
     const lastSlash = filePath.lastIndexOf('/');
     const dir = lastSlash === -1 ? '.' : filePath.substring(0, lastSlash);
     return this.getFounder(dir);
+  }
+
+  registerFileFounder(filePath: string, participant: string): void {
+    if (!this.fileFounders.has(filePath)) {
+      this.fileFounders.set(filePath, participant);
+    }
+  }
+
+  getFileFounder(filePath: string): string | null {
+    return this.fileFounders.get(filePath) || null;
+  }
+
+  canAcceptDelete(filePath: string, participant: string): boolean {
+    const fileFounder = this.getFileFounder(filePath);
+    return fileFounder === participant;
   }
 
   toJSON(): string {
@@ -75,8 +92,11 @@ export class FounderTree {
     return obj;
   }
 
-  loadFoundersObject(obj: Record<string, string>) {
+  loadFoundersObject(obj: Record<string, string>, fileFoundersObj?: Record<string, string>) {
     this.founders = new Map(Object.entries(obj));
+    if (fileFoundersObj) {
+      this.fileFounders = new Map(Object.entries(fileFoundersObj));
+    }
   }
 
   static fromJSON(json: string, rootFounder: string): FounderTree {

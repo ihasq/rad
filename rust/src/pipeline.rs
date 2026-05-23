@@ -69,7 +69,18 @@ pub fn handle_chain(parts: &[&str], oplog: &OpLog) -> String {
     let file = parts[1];
     let start: u32 = parts[2].parse().unwrap();
     let end: u32 = parts[3].parse().unwrap();
-    let chain = oplog.get_chain(file, start, end);
+
+    // 通常の領域チェーンに加え、ファイル全体の操作（delete等）も含める
+    let region_id = format!("{}:{}-{}", file, start, end);
+    let file_prefix = format!("file:{}", file);
+
+    let mut chain: Vec<&Operation> = oplog.all()
+        .iter()
+        .filter(|op| op.region_id == region_id || op.region_id == file_prefix)
+        .collect();
+    chain.sort_by_key(|op| op.timestamp);
+
+    let chain = chain; // 既存コードとの互換性維持
 
     // ステータスカウント
     let visible_count = chain.iter().filter(|op| op.status == OpStatus::Visible).count();
@@ -82,7 +93,7 @@ pub fn handle_chain(parts: &[&str], oplog: &OpLog) -> String {
         format!("{}:{}-{} ({} writes)\n", file, start, end, chain.len())
     };
 
-    // 各 write の1行表示
+    // 各操作の1行表示
     for op in chain {
         let status_str = match op.status {
             OpStatus::Visible => "visible",
@@ -90,8 +101,14 @@ pub fn handle_chain(parts: &[&str], oplog: &OpLog) -> String {
             OpStatus::Rejected => "rejected",
             OpStatus::Discarded => "discarded",
         };
-        result.push_str(&format!("  {} [{}] {}  t={}  \"{}\"\n",
-            op.id, status_str, op.participant_id, op.timestamp, op.content));
+        let type_str = match op.op_type {
+            OpType::Write => "write",
+            OpType::Approve => "approve",
+            OpType::Reject => "reject",
+            OpType::Delete => "delete",
+        };
+        result.push_str(&format!("  {} [{}] [{}] {}  t={}  \"{}\"\n",
+            op.id, status_str, type_str, op.participant_id, op.timestamp, op.content));
     }
 
     result.trim_end().to_string()
