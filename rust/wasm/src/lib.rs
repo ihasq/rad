@@ -201,7 +201,8 @@ pub extern "C" fn rad_submit_op(input_ptr: *const u8, input_len: usize) -> i32 {
         participant_id: String,
         #[serde(rename = "type")]
         op_type: String,
-        region_id: String,
+        region_id: Option<String>,  // write/delete で使用
+        target_operation_id: Option<String>,  // reject/approve で使用
         #[serde(default)]
         content: String,
         reason: Option<String>,
@@ -231,13 +232,28 @@ pub extern "C" fn rad_submit_op(input_ptr: *const u8, input_len: usize) -> i32 {
         let op_type = match input.op_type.as_str() {
             "write" => OpType::Write,
             "delete" => OpType::Delete,
+            "reject" => OpType::Reject,
+            "approve" => OpType::Approve,
             _ => return Err(("Invalid operation type".to_string(), "INVALID_JSON".to_string())),
+        };
+
+        // region_id の決定: write/delete は regionId、reject/approve は targetOperationId から取得
+        let region_id = match op_type {
+            OpType::Write | OpType::Delete => {
+                input.region_id.ok_or(("regionId is required for write/delete".to_string(), "MISSING_FIELD".to_string()))?
+            }
+            OpType::Reject | OpType::Approve => {
+                // reject/approve の場合、targetOperationId から対象操作を取得してregion_idを使う
+                let target_id = input.target_operation_id.ok_or(("targetOperationId is required for reject/approve".to_string(), "MISSING_FIELD".to_string()))?;
+                // target_id をそのまま region_id として使用（仕様により異なるが、ここでは簡易的に）
+                target_id
+            }
         };
 
         let op = Operation {
             id: generate_op_id(),
             participant_id: input.participant_id,
-            region_id: input.region_id,
+            region_id,
             op_type,
             content: input.content,
             reason: input.reason,
