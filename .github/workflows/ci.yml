@@ -22,9 +22,13 @@ jobs:
           ls -lh rust/target/wasm32-unknown-unknown/release/rad_wasm.wasm 2>&1 || echo "WASM NOT FOUND in rust target"
           echo "=== TS binary ==="
           ls -lh ts/dist/rad 2>&1 || echo "TS binary NOT FOUND"
-          echo "=== Test t015 verbose ==="
+          echo "=== Test t015 verbose (first 100 lines) ==="
           RUST_BIN=$(readlink -f rust/target/release/rad)
           TS_BIN=$(readlink -f ts/dist/rad)
-          bash -x tests/t015_relay.sh $RUST_BIN $TS_BIN 2>&1 | head -50
+          bash -x tests/t015_relay.sh $RUST_BIN $TS_BIN 2>&1 | head -100
+          echo ""
+          echo "=== Test t015 verbose (last 30 lines) ==="
+          bash -x tests/t015_relay.sh $RUST_BIN $TS_BIN 2>&1 | tail -30
+          echo "EXIT: $?"
       - name: Run shared tests
         run: bash tests/runner.sh
