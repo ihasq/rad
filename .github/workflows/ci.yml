@@ -21,30 +21,36 @@ jobs:
           TS_BIN=$(readlink -f ts/dist/rad)
           WASM_PATH=$(readlink -f ts/dist/rad_wasm.wasm)
 
+          # 鍵ペア生成（JOIN と署名で同一鍵を使用）
+          KEYS=$($RUST_BIN keygen)
+          PUB=$(echo "$KEYS" | head -1 | awk '{print $2}')
+          SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
+          echo "Generated keys - Public: $PUB"
+
           # Relay 起動
           $TS_BIN relay --port 18999 --wasm $WASM_PATH &
           sleep 3
 
-          # join
+          # join（生成した公開鍵を使用）
+          echo '=== join ==='
           curl -s -X POST http://localhost:18999/rad/participants \
             -H 'Content-Type: application/json' \
-            -d '{"publicKey":"testkey","displayName":"alice"}'
+            -d "{\"publicKey\":\"$PUB\",\"displayName\":\"alice\"}"
           echo ""
 
-          # write（署名なしで400の内容を確認）
-          echo '=== write response body ==='
-          curl -s -X POST http://localhost:18999/rad/operations \
+          # write（署名なしで403確認）
+          echo '=== write unsigned (expect 403) ==='
+          curl -s -w '\nHTTP:%{http_code}\n' -X POST http://localhost:18999/rad/operations \
             -H 'Content-Type: application/json' \
             -d '{"participantId":"p-0","type":"write","regionId":"main.ts:1-10","content":"hello","signature":"dummy"}'
           echo ""
 
-          # write（署名付きで確認）
-          KEYS=$($RUST_BIN keygen)
-          SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
+          # write（署名付きで201確認）
           OP='{"content":"hello","participantId":"p-0","regionId":"main.ts:1-10","type":"write"}'
           SIGNED=$(echo "$OP" | $RUST_BIN sign --secret-key "$SEC")
-          echo '=== signed write response ==='
-          curl -s -w '\nHTTP_STATUS:%{http_code}' -X POST http://localhost:18999/rad/operations \
+          echo '=== write signed (expect 201) ==='
+          echo "Payload: $SIGNED"
+          curl -s -w '\nHTTP:%{http_code}\n' -X POST http://localhost:18999/rad/operations \
             -H 'Content-Type: application/json' \
             -d "$SIGNED"
           echo ""
