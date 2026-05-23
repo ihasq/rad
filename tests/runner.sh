@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-RUST_BIN="${RUST_BIN:-rust/target/release/rad}"
-TS_BIN="${TS_BIN:-ts/dist/rad}"
+RUST_BIN="$(readlink -f "${RUST_BIN:-rust/target/release/rad}")"
+TS_BIN="$(readlink -f "${TS_BIN:-ts/dist/rad}")"
 PASS=0; FAIL=0; SKIP=0; TOTAL=0
 
 run_test() {
