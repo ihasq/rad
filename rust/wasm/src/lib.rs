@@ -250,6 +250,13 @@ pub extern "C" fn rad_submit_op(input_ptr: *const u8, input_len: usize) -> i32 {
             }
         };
 
+        // reject 操作は reason 必須
+        if matches!(op_type, OpType::Reject) {
+            if input.reason.is_none() || input.reason.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+                return Err(("reason is required for reject operations".to_string(), "MISSING_FIELD".to_string()));
+            }
+        }
+
         let op = Operation {
             id: generate_op_id(),
             participant_id: input.participant_id.clone(),
