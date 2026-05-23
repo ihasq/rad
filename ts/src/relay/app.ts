@@ -1,109 +1,125 @@
 import { Hono } from 'hono';
 import type { RadWasm } from '../wasm/loader';
+import {
+  wasmToHttpStatus,
+  toJoinResponse,
+  toSubmitOpResponse,
+  toAcceptResponse,
+  toOpStatusResponse,
+  toErrorResponse,
+  type WasmResult
+} from './transform';
+import { generateOpId, currentTimestamp } from './idgen';
 
 export function createRelayApp(wasm: RadWasm) {
   const app = new Hono();
 
-  // 参加者
+  // 参加者登録
   app.post('/rad/participants', async (c) => {
     const body = await c.req.text();
-    const result = wasm.join(body);
-    const parsed = JSON.parse(result);
-    if (parsed.error) return c.json(parsed, 400);
-    return c.json(parsed, 201);
+    const raw = wasm.join(body);
+    const result: WasmResult = JSON.parse(raw);
+    if (!result.ok) {
+      return c.json(toErrorResponse(result), wasmToHttpStatus(result));
+    }
+    return c.json(toJoinResponse(result.data), 201);
   });
 
   app.get('/rad/participants', (c) => {
-    const result = wasm.getParticipants();
-    return c.json(JSON.parse(result));
+    const raw = wasm.getParticipants();
+    const result: WasmResult = JSON.parse(raw);
+    return c.json(result.ok ? result.data : [], 200);
   });
 
-  // 操作
+  // 操作送信
   app.post('/rad/operations', async (c) => {
     const body = JSON.parse(await c.req.text());
-    // Relay が id と timestamp を生成（WASM Core が期待するフィールド）
-    if (!body.id) {
-      body.id = 'op-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+
+    // === Relay の責務: ID, timestamp, status, reason を注入 ===
+    body.id = generateOpId();
+    body.timestamp = currentTimestamp();
+    body.status = 'visible';
+    if (body.reason === undefined) body.reason = null;
+
+    const raw = wasm.submitOp(JSON.stringify(body));
+    const result: WasmResult = JSON.parse(raw);
+    if (!result.ok) {
+      return c.json(toErrorResponse(result), wasmToHttpStatus(result));
     }
-    if (!body.timestamp) {
-      body.timestamp = Date.now();
-    }
-    if (!body.status) {
-      body.status = 'visible';
-    }
-    if (body.reason === undefined) {
-      body.reason = null;
-    }
-    const result = wasm.submitOp(JSON.stringify(body));
-    const parsed = JSON.parse(result);
-    if (parsed.error) {
-      const status = parsed.code === 'INVALID_SIGNATURE' ? 403 : 400;
-      return c.json(parsed, status);
-    }
-    return c.json(parsed, 201);
+    // === Relay の責務: 内部スキーマ → OpenAPI スキーマ ===
+    return c.json(toSubmitOpResponse(result.data), 201);
   });
 
   // accept
   app.post('/rad/accept', async (c) => {
     const body = await c.req.text();
-    const result = wasm.accept(body);
-    const parsed = JSON.parse(result);
-    if (parsed.error) {
-      const status = parsed.code === 'NOT_LEADER' ? 403 : 409;
-      return c.json(parsed, status);
+    const raw = wasm.accept(body);
+    const result: WasmResult = JSON.parse(raw);
+    if (!result.ok) {
+      return c.json(toErrorResponse(result), wasmToHttpStatus(result));
     }
-    return c.json(parsed, 200);
+    return c.json(toAcceptResponse(result.data), 200);
   });
 
   // 読み取り
   app.get('/rad/operations/:id/status', (c) => {
-    const result = wasm.getOpStatus(c.req.param('id'));
-    return c.json(JSON.parse(result));
+    const raw = wasm.getOpStatus(c.req.param('id'));
+    const result: WasmResult = JSON.parse(raw);
+    if (!result.ok) {
+      return c.json(toErrorResponse(result), wasmToHttpStatus(result));
+    }
+    return c.json(toOpStatusResponse(result.data), 200);
   });
 
   app.get('/rad/operations/:id', (c) => {
-    const result = wasm.getOp(c.req.param('id'));
-    const parsed = JSON.parse(result);
-    if (parsed.error) return c.json(parsed, 404);
-    return c.json(parsed);
+    const raw = wasm.getOp(c.req.param('id'));
+    const result: WasmResult = JSON.parse(raw);
+    if (!result.ok) return c.json(toErrorResponse(result), 404);
+    return c.json(result.data, 200);
   });
 
   app.get('/rad/visible/:path{.+}', (c) => {
-    const result = wasm.getVisible(c.req.param('path'));
-    return c.json(JSON.parse(result));
+    const raw = wasm.getVisible(c.req.param('path'));
+    const result: WasmResult = JSON.parse(raw);
+    return c.json(result.ok ? result.data : [], 200);
   });
 
   app.get('/rad/files/:path{.+}', (c) => {
-    const result = wasm.getFile(c.req.param('path'));
-    const parsed = JSON.parse(result);
-    if (parsed.error) return c.json(parsed, 404);
-    return c.json(parsed);
+    const raw = wasm.getFile(c.req.param('path'));
+    const result: WasmResult = JSON.parse(raw);
+    if (!result.ok) return c.json(toErrorResponse(result), 404);
+    return c.json(result.data, 200);
   });
 
   app.get('/rad/files', (c) => {
-    const result = wasm.getFileList();
-    return c.json(JSON.parse(result));
+    const raw = wasm.getFileList();
+    const result: WasmResult = JSON.parse(raw);
+    return c.json(result.ok ? result.data : [], 200);
   });
 
   app.get('/rad/regions/:path{.+}', (c) => {
-    const result = wasm.getRegions(c.req.param('path'));
-    return c.json(JSON.parse(result));
+    const raw = wasm.getRegions(c.req.param('path'));
+    const result: WasmResult = JSON.parse(raw);
+    return c.json(result.ok ? result.data : [], 200);
   });
 
   app.get('/rad/log', (c) => {
     const query = JSON.stringify({
-      regionId: c.req.query('regionId'),
-      participantId: c.req.query('participantId'),
-      since: c.req.query('since'),
-      limit: c.req.query('limit'),
+      regionId: c.req.query('regionId') ?? null,
+      participantId: c.req.query('participantId') ?? null,
+      since: c.req.query('since') ? parseInt(c.req.query('since')!) : null,
+      limit: c.req.query('limit') ? parseInt(c.req.query('limit')!) : null,
     });
-    const result = wasm.getLog(query);
-    return c.json(JSON.parse(result));
+    const raw = wasm.getLog(query);
+    const result: WasmResult = JSON.parse(raw);
+    return c.json(result.ok ? result.data : [], 200);
   });
 
   app.post('/rad/compact', (c) => {
-    const result = wasm.compact();
-    return c.json(JSON.parse(result));
+    const raw = wasm.compact();
+    const result: WasmResult = JSON.parse(raw);
+    if (!result.ok) return c.json(toErrorResponse(result), 500);
+    return c.json(result.data, 200);
   });
 
   app.post('/rad/sync/git', (c) => c.json({ error: 'Not implemented' }, 501));
