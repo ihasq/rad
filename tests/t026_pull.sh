@@ -6,9 +6,10 @@ PORT=18952
 BASE="http://localhost:$PORT"
 
 # Start TS Relay in background
-"$TS" relay --port $PORT > /dev/null 2>&1 &
+WASM_PATH=$(dirname "$TS")/rad_wasm.wasm
+"$TS" relay --port $PORT --wasm "$WASM_PATH" > /dev/null 2>&1 &
 RELAY_PID=$!
-sleep 2
+sleep 3
 
 # Cleanup function
 cleanup() {

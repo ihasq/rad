@@ -97,10 +97,63 @@ pub extern "C" fn rad_init() -> i32 {
 /// 入力: {"publicKey": "...", "displayName": "..."}
 /// 出力: {"participantId": "...", "joinedAt": 123}
 #[no_mangle]
-pub extern "C" fn rad_join(_input_ptr: *const u8, _input_len: usize) -> i32 {
-    // Simplified version for debugging
-    set_result(r#"{"participantId":"p-0","publicKey":"test","joinedAt":1234567890}"#);
-    0
+pub extern "C" fn rad_join(input_ptr: *const u8, input_len: usize) -> i32 {
+    let input = unsafe { read_string(input_ptr, input_len) };
+
+    let result: Result<String, String> = STATE.with(|s| {
+        let mut state = s.borrow_mut();
+        let state = state.as_mut().ok_or("State not initialized")?;
+
+        // JSON パース
+        #[derive(serde::Deserialize)]
+        struct JoinRequest {
+            #[serde(rename = "publicKey")]
+            public_key: Option<String>,
+            #[serde(rename = "displayName")]
+            display_name: Option<String>,
+        }
+
+        let req: JoinRequest = serde_json::from_str(&input)
+            .map_err(|e| format!("Invalid JSON: {}", e))?;
+
+        // publicKey必須チェック
+        let public_key = req.public_key.ok_or("publicKey is required")?;
+
+        // 参加者作成
+        let participant = Participant {
+            id: format!("p-{}", state.participants.len()),
+            public_key: public_key.clone(),
+            display_name: req.display_name,
+            joined_at: 1234567890, // TODO: 実際のタイムスタンプ
+        };
+
+        state.participants.push(participant.clone());
+
+        // ストレージに保存
+        let key = format!("participants/{}", participant.id);
+        let data = serde_json::to_string(&participant).unwrap();
+        let _ = state.backend.put(&key, &data);
+
+        // レスポンス作成
+        let response = serde_json::json!({
+            "participantId": participant.id,
+            "publicKey": public_key,
+            "joinedAt": participant.joined_at
+        });
+
+        Ok(serde_json::to_string(&response).unwrap())
+    });
+
+    match result {
+        Ok(json) => {
+            set_result(&json);
+            0
+        }
+        Err(e) => {
+            set_result(&format!(r#"{{"error":"{}"}}"#, e));
+            -1
+        }
+    }
 }
 
 /// 操作送信
@@ -252,17 +305,190 @@ pub extern "C" fn rad_get_participants() -> i32 {
 /// ファイル取得
 #[no_mangle]
 pub extern "C" fn rad_get_file(path_ptr: *const u8, path_len: usize) -> i32 {
-    let _path = unsafe { read_string(path_ptr, path_len) };
-    // TODO: 実装
-    set_result(r#"{"content":""}"#);
-    0
+    let result: Result<String, String> = STATE.with(|s| {
+        let state = s.borrow();
+        let state = state.as_ref().ok_or("State not initialized")?;
+        let path = unsafe { read_string(path_ptr, path_len) };
+
+        // Get accepted operations for this file
+        let mut content_parts: Vec<(usize, String)> = vec![];
+        for op in state.oplog.get_all_operations() {
+            if op.region_id.starts_with(&path) && matches!(op.status, OpStatus::Accepted) {
+                // Parse region ID to get line number
+                if let Some(range) = op.region_id.split(':').nth(1) {
+                    if let Some(start_str) = range.split('-').next() {
+                        if let Ok(start) = start_str.parse::<usize>() {
+                            content_parts.push((start, op.content.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort by line number and concatenate
+        content_parts.sort_by_key(|(line, _)| *line);
+        let content: String = content_parts
+            .into_iter()
+            .map(|(_, c)| c)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let result_json = serde_json::json!({ "content": content });
+        Ok(serde_json::to_string(&result_json).unwrap())
+    });
+
+    match result {
+        Ok(json) => {
+            set_result(&json);
+            0
+        }
+        Err(e) => {
+            set_result(&format!(r#"{{"error":"{}"}}"#, e));
+            -1
+        }
+    }
 }
 
 /// コード領域取得
 #[no_mangle]
 pub extern "C" fn rad_get_regions(path_ptr: *const u8, path_len: usize) -> i32 {
-    let _path = unsafe { read_string(path_ptr, path_len) };
-    // TODO: 実装
-    set_result(r#"[]"#);
-    0
+    let result: Result<String, String> = STATE.with(|s| {
+        let state = s.borrow();
+        let state = state.as_ref().ok_or("State not initialized")?;
+        let path = unsafe { read_string(path_ptr, path_len) };
+
+        let regions = state.region_map.list(&path);
+        Ok(serde_json::to_string(&regions).unwrap())
+    });
+
+    match result {
+        Ok(json) => {
+            set_result(&json);
+            0
+        }
+        Err(e) => {
+            set_result(&format!(r#"{{"error":"{}"}}"#, e));
+            -1
+        }
+    }
+}
+
+/// 操作ステータス取得
+#[no_mangle]
+pub extern "C" fn rad_get_op_status(id_ptr: *const u8, id_len: usize) -> i32 {
+    let result: Result<String, String> = STATE.with(|s| {
+        let state = s.borrow();
+        let state = state.as_ref().ok_or("State not initialized")?;
+        let id = unsafe { read_string(id_ptr, id_len) };
+
+        match state.oplog.get_by_id(&id) {
+            Some(op) => {
+                let status_json = serde_json::json!({
+                    "status": format!("{:?}", op.status).to_lowercase()
+                });
+                Ok(serde_json::to_string(&status_json).unwrap())
+            }
+            None => Err("Operation not found".to_string())
+        }
+    });
+
+    match result {
+        Ok(json) => {
+            set_result(&json);
+            0
+        }
+        Err(e) => {
+            set_result(&format!(r#"{{"error":"{}"}}"#, e));
+            -1
+        }
+    }
+}
+
+/// 操作取得
+#[no_mangle]
+pub extern "C" fn rad_get_op(id_ptr: *const u8, id_len: usize) -> i32 {
+    let result: Result<String, String> = STATE.with(|s| {
+        let state = s.borrow();
+        let state = state.as_ref().ok_or("State not initialized")?;
+        let id = unsafe { read_string(id_ptr, id_len) };
+
+        match state.oplog.get_by_id(&id) {
+            Some(op) => Ok(serde_json::to_string(&op).unwrap()),
+            None => Err("Operation not found".to_string())
+        }
+    });
+
+    match result {
+        Ok(json) => {
+            set_result(&json);
+            0
+        }
+        Err(e) => {
+            set_result(&format!(r#"{{"error":"{}"}}"#, e));
+            -1
+        }
+    }
+}
+
+/// visible 操作取得
+#[no_mangle]
+pub extern "C" fn rad_get_visible(path_ptr: *const u8, path_len: usize) -> i32 {
+    let result: Result<String, String> = STATE.with(|s| {
+        let state = s.borrow();
+        let state = state.as_ref().ok_or("State not initialized")?;
+        let path = unsafe { read_string(path_ptr, path_len) };
+
+        let ops: Vec<_> = state.oplog.get_all_operations()
+            .into_iter()
+            .filter(|op| {
+                op.region_id.starts_with(&path) && matches!(op.status, OpStatus::Visible)
+            })
+            .collect();
+
+        Ok(serde_json::to_string(&ops).unwrap())
+    });
+
+    match result {
+        Ok(json) => {
+            set_result(&json);
+            0
+        }
+        Err(e) => {
+            set_result(&format!(r#"{{"error":"{}"}}"#, e));
+            -1
+        }
+    }
+}
+
+/// ファイル一覧取得
+#[no_mangle]
+pub extern "C" fn rad_get_file_list() -> i32 {
+    let result: Result<String, String> = STATE.with(|s| {
+        let state = s.borrow();
+        let state = state.as_ref().ok_or("State not initialized")?;
+
+        // Get unique file paths from accepted operations
+        let mut files = std::collections::HashSet::new();
+        for op in state.oplog.get_all_operations() {
+            if matches!(op.status, OpStatus::Accepted) {
+                if let Some(file_path) = op.region_id.split(':').next() {
+                    files.insert(file_path.to_string());
+                }
+            }
+        }
+
+        let file_list: Vec<String> = files.into_iter().collect();
+        Ok(serde_json::to_string(&file_list).unwrap())
+    });
+
+    match result {
+        Ok(json) => {
+            set_result(&json);
+            0
+        }
+        Err(e) => {
+            set_result(&format!(r#"{{"error":"{}"}}"#, e));
+            -1
+        }
+    }
 }

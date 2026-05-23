@@ -8,9 +8,10 @@ PORT=18923
 cleanup() { kill $RELAY_PID 2>/dev/null; wait $RELAY_PID 2>/dev/null; }
 trap cleanup EXIT
 
-"$TS" relay --port $PORT > /tmp/relay.log 2>&1 &
+WASM_PATH=$(dirname "$TS")/rad_wasm.wasm
+"$TS" relay --port $PORT --wasm "$WASM_PATH" > /tmp/relay.log 2>&1 &
 RELAY_PID=$!
-sleep 2  # 起動待ち
+sleep 3  # 起動待ち（WASM ロードに時間がかかる場合がある）
 BASE="http://localhost:$PORT"
 
 # 鍵ペア生成

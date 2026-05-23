@@ -218,6 +218,54 @@ export class RadWasm {
     (this.instance.exports.rad_get_regions as Function)(ptr, len);
     return this.readResult();
   }
+
+  getOpStatus(id: string): string {
+    const [ptr, len] = this.writeString(id);
+    (this.instance.exports.rad_get_op_status as Function)(ptr, len);
+    return this.readResult();
+  }
+
+  getOp(id: string): string {
+    const [ptr, len] = this.writeString(id);
+    (this.instance.exports.rad_get_op as Function)(ptr, len);
+    return this.readResult();
+  }
+
+  getVisible(path: string): string {
+    const [ptr, len] = this.writeString(path);
+    (this.instance.exports.rad_get_visible as Function)(ptr, len);
+    return this.readResult();
+  }
+
+  getFileList(): string {
+    (this.instance.exports.rad_get_file_list as Function)();
+    return this.readResult();
+  }
+}
+
+export function createMemoryBackend(): RadStorageBackend {
+  const storage = new Map<string, string>();
+
+  return {
+    put(key: string, data: string): void {
+      storage.set(key, data);
+    },
+    get(key: string): string | null {
+      return storage.get(key) ?? null;
+    },
+    list(prefix: string): string[] {
+      const keys: string[] = [];
+      for (const key of storage.keys()) {
+        if (key.startsWith(prefix)) {
+          keys.push(key);
+        }
+      }
+      return keys;
+    },
+    delete(key: string): void {
+      storage.delete(key);
+    },
+  };
 }
 
 function readString(

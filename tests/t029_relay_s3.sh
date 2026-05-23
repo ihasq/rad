@@ -29,7 +29,8 @@ SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
 
 # --- TS Relay S3 Test ---
 # T-RS01: Start TS Relay with S3
-"$TS" relay --port $PORT_TS $S3_OPTS > /tmp/ts-relay-s3.log 2>&1 &
+WASM_PATH=$(dirname "$TS")/rad_wasm.wasm
+"$TS" relay --port $PORT_TS $S3_OPTS --wasm "$WASM_PATH" > /tmp/ts-relay-s3.log 2>&1 &
 TS_PID=$!
 sleep 3
 
@@ -61,7 +62,7 @@ curl -s -X POST http://localhost:$PORT_TS/rad/operations \
 kill $TS_PID 2>/dev/null
 sleep 2
 
-"$TS" relay --port $PORT_TS $S3_OPTS > /tmp/ts-relay-s3-2.log 2>&1 &
+"$TS" relay --port $PORT_TS $S3_OPTS --wasm "$WASM_PATH" > /tmp/ts-relay-s3-2.log 2>&1 &
 TS_PID=$!
 sleep 3
 
@@ -82,9 +83,9 @@ kill $TS_PID 2>/dev/null
 sleep 1
 
 # T-RS09: Start without --storage flag (in-memory mode)
-"$TS" relay --port $PORT_TS > /tmp/ts-relay-memory.log 2>&1 &
+"$TS" relay --port $PORT_TS --wasm "$WASM_PATH" > /tmp/ts-relay-memory.log 2>&1 &
 TS_PID=$!
-sleep 2
+sleep 3
 
 # Should start with empty state (no S3 data visible)
 LOG=$(curl -s http://localhost:$PORT_TS/rad/log)
