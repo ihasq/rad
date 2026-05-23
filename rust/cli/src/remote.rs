@@ -5,6 +5,14 @@ use serde::{Deserialize, Serialize};
 pub struct JoinResponse {
     #[serde(rename = "participantId")]
     pub participant_id: String,
+    #[serde(rename = "publicKey")]
+    pub public_key: String,
+    #[serde(rename = "isFounder")]
+    pub is_founder: bool,
+    #[serde(rename = "isMessenger")]
+    pub is_messenger: bool,
+    #[serde(rename = "joinedAt")]
+    pub joined_at: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -40,11 +48,12 @@ impl RemoteClient {
         }
     }
 
-    pub fn join(&self, participant_id: &str, public_key: &str, is_founder: bool) -> Result<JoinResponse, String> {
+    pub fn join(&self, participant_id: &str, public_key: &str, _is_founder: bool) -> Result<JoinResponse, String> {
+        // RP19-V3: Join API now uses {publicKey, displayName} format
+        // participantId is used as displayName, isFounder is auto-calculated by WASM
         let body = serde_json::json!({
-            "participantId": participant_id,
             "publicKey": public_key,
-            "isFounder": is_founder,
+            "displayName": participant_id,
         });
 
         let url = format!("{}/rad/participants", self.url);
