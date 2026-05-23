@@ -252,8 +252,8 @@ pub extern "C" fn rad_submit_op(input_ptr: *const u8, input_len: usize) -> i32 {
 
         let op = Operation {
             id: generate_op_id(),
-            participant_id: input.participant_id,
-            region_id,
+            participant_id: input.participant_id.clone(),
+            region_id: region_id.clone(),
             op_type,
             content: input.content,
             reason: input.reason,
@@ -261,6 +261,25 @@ pub extern "C" fn rad_submit_op(input_ptr: *const u8, input_len: usize) -> i32 {
             timestamp: current_timestamp(),
             status: OpStatus::Visible,
         };
+
+        // write 操作の場合、region を登録（先着が Leader になる）
+        if matches!(op.op_type, OpType::Write) {
+            // region_id のフォーマット: "file.ts:1-10"
+            if let Some((file_path, range)) = region_id.split_once(':') {
+                if let Some((start_str, end_str)) = range.split_once('-') {
+                    if let (Ok(start), Ok(end)) = (start_str.parse::<u32>(), end_str.parse::<u32>()) {
+                        let region = CodeRegion {
+                            id: region_id.clone(),
+                            file_path: file_path.to_string(),
+                            start_line: start,
+                            end_line: end,
+                            owner_id: input.participant_id.clone(),
+                        };
+                        state.region_map.register(region);
+                    }
+                }
+            }
+        }
 
         // OpLog に追加
         state.oplog.append(op.clone());
@@ -319,6 +338,19 @@ pub extern "C" fn rad_accept(input_ptr: *const u8, input_len: usize) -> i32 {
         if !verify_operation(&input_str, &participant.public_key) {
             return Err(("Invalid signature".to_string(), "INVALID_SIGNATURE".to_string()));
         }
+
+        // 対象操作を取得
+        let target_op = state.oplog.get_by_id(&input.operation_id)
+            .ok_or(("Operation not found".to_string(), "NOT_FOUND".to_string()))?;
+
+        // Leader 検証: accept を実行できるのは region の owner のみ
+        let owner = state.region_map.get_owner_by_region_id(&target_op.region_id);
+        if let Some(owner_id) = owner {
+            if owner_id != input.participant_id {
+                return Err(("Only the region leader can accept operations".to_string(), "NOT_LEADER".to_string()));
+            }
+        }
+        // owner が None の場合（unowned region）は誰でも accept 可能
 
         // ステータス更新
         state.oplog.set_status(&input.operation_id, OpStatus::Accepted);
