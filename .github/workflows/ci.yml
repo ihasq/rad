@@ -56,5 +56,11 @@ jobs:
           echo ""
 
           kill %1 2>/dev/null
+      - name: Run t015 with verbose output
+        run: |
+          RUST=$(readlink -f rust/target/release/rad)
+          TS=$(readlink -f ts/dist/rad)
+          bash -x tests/t015_relay.sh "$RUST" "$TS" 2>&1 | tail -100
+          echo "t015 EXIT CODE: $?"
       - name: Run shared tests
         run: bash tests/runner.sh
