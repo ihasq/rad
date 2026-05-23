@@ -28,7 +28,7 @@ ALICE_SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
 ALICE_JOIN=$(curl -s -X POST "$BASE/rad/participants" \
   -H "Content-Type: application/json" \
   -d "{\"publicKey\":\"$ALICE_PUB\",\"displayName\":\"alice\"}")
-ALICE_ID=$(echo "$ALICE_JOIN" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+ALICE_ID=$(echo "$ALICE_JOIN" | grep -o '"participantId":"[^"]*"' | cut -d'"' -f4)
 
 # Alice creates a signed write operation via API
 OP_JSON=$(cat <<EOF
