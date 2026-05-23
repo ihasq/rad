@@ -17,6 +17,7 @@ pub struct JoinResponse {
 
 #[derive(Serialize, Deserialize)]
 pub struct SubmitResponse {
+    #[serde(rename = "operationId")]
     pub id: String,
     pub status: String,
 }
