@@ -1,6 +1,5 @@
 #!/bin/bash
 RUST="$(realpath "$1")"
-TS="$(realpath "$2")"
 
 # Rust export test
 R_DIR=$(mktemp -d)
@@ -56,7 +55,6 @@ SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
 (cd "$T_DIR" && "$TS" init --participant exporter --secret-key "$SEC" > /dev/null 2>&1)
 (cd "$T_DIR" && "$TS" import > /dev/null 2>&1)
 
-# T-GE06: TS でも export が動作する
 BEFORE_COMMITS=$(git -C "$T_DIR" log --oneline | wc -l)
 (cd "$T_DIR" && "$TS" export > /dev/null 2>&1) || { rm -rf "$T_DIR"; exit 1; }
 AFTER_COMMITS=$(git -C "$T_DIR" log --oneline | wc -l)

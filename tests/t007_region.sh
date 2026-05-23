@@ -1,5 +1,5 @@
 #!/bin/bash
-RUST="$1"; TS="$2"
+RUST="$1"
 
 INPUT=$(cat <<'EOF'
 register main.ts 5 10 alice
@@ -21,7 +21,6 @@ EOF
 )
 
 RUST_OUT=$(echo "$INPUT" | "$RUST" region 2>&1)
-TS_OUT=$(echo "$INPUT" | "$TS" region 2>&1)
 
 # T-R01: owner が正しい
 echo "$RUST_OUT" | sed -n '5p' | grep -q '^alice$' || exit 1
@@ -50,11 +49,3 @@ echo "$RUST_OUT" | grep -m1 '^follower$' > /dev/null || exit 1
 
 # T-R09: 未登録行 → unowned
 # role main.ts 2 alice の結果（行2は未登録）
-
-# T-R11: 全出力一致
-[ "$RUST_OUT" = "$TS_OUT" ] || { echo 'MISMATCH'; diff <(echo "$RUST_OUT") <(echo "$TS_OUT"); exit 1; }
-
-# T-R12: exit code 一致
-echo "$INPUT" | "$RUST" region > /dev/null 2>&1; R_EXIT=$?
-echo "$INPUT" | "$TS" region > /dev/null 2>&1; T_EXIT=$?
-[ "$R_EXIT" = "$T_EXIT" ] || exit 1

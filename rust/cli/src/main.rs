@@ -1,24 +1,24 @@
 use clap::Parser;
 use std::io::{Read, BufRead};
 
-mod types;
-mod crypto;
-mod sign;
-mod verify;
-mod region;
-mod oplog;
+use rad_core::types;
+use rad_core::crypto;
+use rad_core::sign;
+use rad_core::verify;
+use rad_core::region;
+use rad_core::oplog;
+use rad_core::accept;
+use rad_core::reject;
+use rad_core::delete;
+use rad_core::founder;
+use rad_core::store;
+use rad_core::git;
+use rad_core::storage;
+
 mod pipeline;
-mod accept;
-mod reject;
-mod delete;
 mod init;
-mod founder;
-mod store;
-mod relay;
-mod git;
 mod cmd;
 mod remote;
-mod storage;
 
 #[derive(Parser)]
 #[command(name = "rad", version = "0.0.1")]
@@ -55,23 +55,6 @@ enum Commands {
         participant: String,
         #[arg(long)]
         secret_key: String,
-    },
-    /// Start Rad Relay HTTP server
-    Relay {
-        #[arg(long, default_value = "8787")]
-        port: u16,
-        #[arg(long, default_value = "memory")]
-        storage: String,
-        #[arg(long)]
-        s3_endpoint: Option<String>,
-        #[arg(long)]
-        s3_bucket: Option<String>,
-        #[arg(long)]
-        s3_access_key: Option<String>,
-        #[arg(long)]
-        s3_secret_key: Option<String>,
-        #[arg(long, default_value = "us-east-1")]
-        s3_region: String,
     },
     /// Compact operation log into snapshots
     Compact,
@@ -373,73 +356,6 @@ async fn main() {
                     _ => {}
                 }
             }
-        }
-        Some(Commands::Relay {
-            port,
-            storage,
-            s3_endpoint,
-            s3_bucket,
-            s3_access_key,
-            s3_secret_key,
-            s3_region
-        }) => {
-            use crate::storage::{S3Backend, S3Config, S3RadStore};
-
-            let state = if storage == "s3" {
-                // Validate S3 options
-                if s3_endpoint.is_none() || s3_bucket.is_none() || s3_access_key.is_none() || s3_secret_key.is_none() {
-                    eprintln!("error: S3 storage requires --s3-endpoint, --s3-bucket, --s3-access-key, and --s3-secret-key");
-                    std::process::exit(1);
-                }
-
-                let config = S3Config {
-                    endpoint: s3_endpoint.unwrap(),
-                    bucket: s3_bucket.unwrap(),
-                    access_key: s3_access_key.unwrap(),
-                    secret_key: s3_secret_key.unwrap(),
-                    region: s3_region,
-                };
-
-                match S3Backend::new(config) {
-                    Ok(backend) => {
-                        let store = std::sync::Arc::new(S3RadStore::new(std::sync::Arc::new(backend)));
-                        println!("rad relay using S3 storage");
-
-                        // Load existing data from S3
-                        match relay::state::RelayState::from_s3_store(store).await {
-                            Ok(state) => std::sync::Arc::new(state),
-                            Err(e) => {
-                                eprintln!("error: Failed to load data from S3: {}", e);
-                                std::process::exit(1);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("error: Failed to initialize S3 backend: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            } else {
-                std::sync::Arc::new(relay::state::RelayState::new())
-            };
-
-            let app = relay::create_relay_router(state);
-            let addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
-            println!("rad relay listening on port {}", port);
-
-            // Create socket with SO_REUSEADDR to allow quick port reuse in tests
-            let socket = socket2::Socket::new(
-                socket2::Domain::IPV4,
-                socket2::Type::STREAM,
-                Some(socket2::Protocol::TCP),
-            ).unwrap();
-            socket.set_reuse_address(true).unwrap();
-            socket.set_nonblocking(true).unwrap();
-            socket.bind(&addr.into()).unwrap();
-            socket.listen(1024).unwrap();
-
-            let listener = tokio::net::TcpListener::from_std(socket.into()).unwrap();
-            axum::serve(listener, app).await.unwrap();
         }
         Some(Commands::Compact) => {
             let cwd = std::env::current_dir().unwrap();

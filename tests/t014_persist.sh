@@ -1,5 +1,5 @@
 #!/bin/bash
-RUST="$(realpath "$1")"; TS="$(realpath "$2")"
+RUST="$(realpath "$1")"
 
 # 鍵ペア生成
 KEYS=$($RUST keygen)

@@ -35,9 +35,10 @@ info:
     コード領域レベルの責任の所在（コード政治）に基づく。
     
     ## 用語
-    
+
     - **Founder**: あるディレクトリに最初に write し、そのスコープの責任を受け入れた参加者。ディレクトリツリーに沿って再帰的に存在する。root Founder はプロジェクト基盤の提供者。上位 Founder は下位 Founder の Leader。
     - **Participant**: Rad ネットワークに参加する主体（人間、LLM、CI）。
+    - **Messenger**: 参加者間の操作を中継する責務を持つ参加者クラス。現時点ではサーバー（Founder ∩ Messenger）のみがこの責務を負う。
     - **Leader**: あるコード領域に最初に write した参加者。その領域の変更に対する責任を負う。
     - **Follower**: あるコード領域に後から write した参加者。Leader のコードを自由に上書きできる。
     - **Code Region**: ファイル内の行範囲。LSP スコープに対応する。Leader / Follower はこの単位で決定される。
@@ -135,6 +136,7 @@ paths:
       description: |
         参加者を登録する。公開鍵を提示し、Relay が参加者 ID を発行する。
         最初の参加者は Founder となり、全コード領域の初期 Leader として責任を受け入れる。
+        サーバーの最初の参加者は isFounder: true, isMessenger: true となる。
         以降の参加者はコード領域への write を通じて、各領域の Leader になる。
       requestBody:
         required: true
@@ -509,6 +511,9 @@ components:
         isFounder:
           type: boolean
           description: プロジェクトの Founder であるか
+        isMessenger:
+          type: boolean
+          description: この参加者が Messenger（通信中継）の責務を負うか
         foundedFiles:
           type: array
           items:

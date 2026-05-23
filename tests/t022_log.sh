@@ -1,6 +1,5 @@
 #!/bin/bash
 RUST="$(realpath "$1")"
-TS="$(realpath "$2")"
 
 # Setup: create git repo with initial state
 R_DIR=$(mktemp -d)
@@ -72,7 +71,6 @@ echo "write src/main.ts 15 20 bob $BOB_SEC \"const updated = true;\"" | (cd "$T_
 T_OUT=$(cd "$T_DIR" && "$TS" log 2>&1)
 T_EXIT=$?
 
-# T-LG07: Rust と TS の log 出力が一致する（op-id 正規化後）
 R_NORM=$(echo "$R_OUT" | sed -E 's/op-[0-9]+-[0-9]+/OP-ID/g')
 T_NORM=$(echo "$T_OUT" | sed -E 's/op-[0-9]+-[0-9]+/OP-ID/g')
 [ "$R_NORM" = "$T_NORM" ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }

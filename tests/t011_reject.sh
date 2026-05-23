@@ -1,5 +1,5 @@
 #!/bin/bash
-RUST="$1"; TS="$2"
+RUST="$1"
 
 # 鍵ペア生成
 ALICE_KEYS=$($RUST keygen)
@@ -69,27 +69,3 @@ EOF
 )
 echo "$R_ACCEPT_REJECT" | grep -qiE 'error.*cannot reject|error.*not visible' || exit 1
 
-# Group F: 出力一致
-
-# T-R07: reject の JSON 出力が Rust と TS で一致する
-T_REJECT=$(cat <<EOF | "$TS" pipeline --ephemeral 2>&1
-write main.ts 5 10 alice $ALICE_SEC "v1"
-write main.ts 5 10 bob $BOB_SEC "v2"
-reject @2 alice $ALICE_SEC "not good"
-EOF
-)
-R_REJECT_NORM=$(echo "$R_REJECT" | sed -n '3p' | sed 's/"operationId":"[^"]*"/"operationId":"ID"/g')
-T_REJECT_NORM=$(echo "$T_REJECT" | sed -n '3p' | sed 's/"operationId":"[^"]*"/"operationId":"ID"/g')
-[ "$R_REJECT_NORM" = "$T_REJECT_NORM" ] || exit 1
-
-# T-R08: reject 後の chain 出力が Rust と TS で一致する
-T_CHAIN=$(cat <<EOF | "$TS" pipeline --ephemeral 2>&1
-write main.ts 5 10 alice $ALICE_SEC "v1"
-write main.ts 5 10 bob $BOB_SEC "v2"
-reject @2 alice $ALICE_SEC "bad code"
-chain main.ts 5 10
-EOF
-)
-R_CHAIN_NORM=$(echo "$R_CHAIN" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g' | sed 's/t=[0-9]*/t=T/g')
-T_CHAIN_NORM=$(echo "$T_CHAIN" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g' | sed 's/t=[0-9]*/t=T/g')
-[ "$R_CHAIN_NORM" = "$T_CHAIN_NORM" ] || exit 1

@@ -1,6 +1,5 @@
 #!/bin/bash
 RUST="$(realpath "$1")"
-TS="$(realpath "$2")"
 
 PORT=18952
 BASE="http://localhost:$PORT"
@@ -80,7 +79,6 @@ T_DIR=$(mktemp -d)
 echo "write src/alice2.ts 1 10 alice $ALICE_SEC \"alice2\"" | (cd "$R_DIR" && "$RUST" pipeline > /dev/null 2>&1)
 (cd "$R_DIR" && "$RUST" push > /dev/null 2>&1)
 
-# T-PL05: TS client pull
 (cd "$T_DIR" && "$TS" pull > /dev/null 2>&1)
 T_PULL_EXIT=$?
 

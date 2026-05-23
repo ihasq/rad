@@ -1,5 +1,5 @@
 #!/bin/bash
-RUST="$1"; TS="$2"
+RUST="$1"
 
 KEYS=$($RUST keygen)
 PUB=$(echo "$KEYS" | head -1 | awk '{print $2}')
@@ -19,8 +19,3 @@ echo "$TAMPERED" | "$RUST" verify --public-key "$PUB" 2>&1 | grep -q '^invalid$'
 
 # T-V03: 公開鍵不一致 → invalid + exit 1
 echo "$SIGNED" | "$RUST" verify --public-key "$OTHER_PUB" 2>&1 | grep -q '^invalid$' || exit 1
-
-# T-V04: Rust と TS の verify 結果一致
-R_RESULT=$(echo "$SIGNED" | "$RUST" verify --public-key "$PUB" 2>&1)
-T_RESULT=$(echo "$SIGNED" | "$TS" verify --public-key "$PUB" 2>&1)
-[ "$R_RESULT" = "$T_RESULT" ] || exit 1

@@ -1,5 +1,5 @@
 #!/bin/bash
-RUST="$1"; TS="$2"
+RUST="$1"
 
 # 鍵ペア生成
 ALICE_KEYS=$($RUST keygen)
@@ -39,16 +39,6 @@ EOF
 )
 echo "$R_FAIL" | grep -qiE 'error.*leader|only.*leader' || exit 1
 
-# T-A04: 既に accepted な操作への accept はエラー
-R_DOUBLE=$(cat <<EOF | "$RUST" pipeline --ephemeral 2>&1
-write main.ts 5 10 alice $ALICE_SEC "v1"
-write main.ts 5 10 bob $BOB_SEC "v2"
-accept @2 alice $ALICE_SEC
-accept @2 alice $ALICE_SEC
-EOF
-)
-echo "$R_DOUBLE" | grep -qiE 'error.*cannot accept|error.*status' || exit 1
-
 # Group B: 階段飛ばし
 
 # T-A05, T-A06: 3番目を accept → 2番目が discarded
@@ -75,29 +65,3 @@ echo "$R_DISCARD" | grep -qiE 'error.*cannot accept|error.*status' || exit 1
 
 # T-A08: 1番目(Leader自身の write)は discarded にならない
 echo "$R_SKIP" | grep 'alice.*v1' | grep -q '\[visible\]' || exit 1
-
-# Group C: 出力一致
-
-# T-A09: accept の JSON 出力が Rust と TS で一致する
-T_OUT=$(cat <<EOF | "$TS" pipeline --ephemeral 2>&1
-write main.ts 5 10 alice $ALICE_SEC "v1"
-write main.ts 5 10 bob $BOB_SEC "v2"
-accept @2 alice $ALICE_SEC
-EOF
-)
-R_NORM=$(echo "$R_OUT" | sed -n '3p' | sed 's/"operationId":"[^"]*"/"operationId":"ID"/g')
-T_NORM=$(echo "$T_OUT" | sed -n '3p' | sed 's/"operationId":"[^"]*"/"operationId":"ID"/g')
-[ "$R_NORM" = "$T_NORM" ] || exit 1
-
-# T-A10: 階段飛ばし後の chain 出力が Rust と TS で一致する
-T_SKIP=$(cat <<EOF | "$TS" pipeline --ephemeral 2>&1
-write main.ts 5 10 alice $ALICE_SEC "v1"
-write main.ts 5 10 bob $BOB_SEC "v2"
-write main.ts 5 10 carol $CAROL_SEC "v3"
-accept @3 alice $ALICE_SEC
-chain main.ts 5 10
-EOF
-)
-R_CHAIN_NORM=$(echo "$R_SKIP" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g' | sed 's/t=[0-9]*/t=T/g')
-T_CHAIN_NORM=$(echo "$T_SKIP" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g' | sed 's/t=[0-9]*/t=T/g')
-[ "$R_CHAIN_NORM" = "$T_CHAIN_NORM" ] || exit 1

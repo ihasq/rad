@@ -1,6 +1,5 @@
 #!/bin/bash
 RUST="$(realpath "$1")"
-TS="$(realpath "$2")"
 
 PORT=18951
 BASE="http://localhost:$PORT"
@@ -78,7 +77,6 @@ echo "accept $BOB_OP_ID alice $ALICE_SEC" | (cd "$R_DIR" && "$RUST" pipeline > /
 T_DIR=$(mktemp -d)
 (cd "$T_DIR" && "$TS" clone "$BASE" --participant carol --secret-key "$ALICE_SEC" > /dev/null 2>&1)
 
-# T-PU05: Rust と TS クライアントの push 結果が一致する（基本動作）
 echo "write src/test2.ts 1 10 carol $ALICE_SEC \"test2\"" | (cd "$T_DIR" && "$TS" pipeline > /dev/null 2>&1)
 (cd "$T_DIR" && "$TS" push > /dev/null 2>&1)
 T_PUSH_EXIT=$?

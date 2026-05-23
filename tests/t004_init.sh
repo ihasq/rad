@@ -1,5 +1,5 @@
 #!/bin/bash
-RUST="$(realpath "$1")"; TS="$(realpath "$2")"
+RUST="$(realpath "$1")"
 
 # 鍵ペア生成
 KEYS=$($RUST keygen)
@@ -24,15 +24,4 @@ grep -q 'alice' "$R_DIR/.rad/participants.json" || { rm -rf "$R_DIR"; exit 1; }
 echo "$R_OUT" | grep -q 'initialized:' || { rm -rf "$R_DIR"; exit 1; }
 echo "$R_OUT" | grep -q 'founder:' || { rm -rf "$R_DIR"; exit 1; }
 
-# TS init
-T_DIR=$(mktemp -d)
-T_OUT=$(cd "$T_DIR" && "$TS" init --participant alice --secret-key "$SEC" 2>&1)
-T_EXIT=$?
-
-# T-I02: exit 0
-[ $T_EXIT -eq 0 ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
-
-# T-I06: 出力一致
-[ "$R_OUT" = "$T_OUT" ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
-
-rm -rf "$R_DIR" "$T_DIR"
+rm -rf "$R_DIR"

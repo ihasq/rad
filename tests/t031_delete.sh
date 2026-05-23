@@ -2,7 +2,7 @@
 # t031_delete: delete 操作のテスト
 
 RUST="$1"
-TS="$2"
+
 
 # T-DL01: delete 操作が visible で提出される
 # T-DL02: file founder が delete を accept → ファイル削除

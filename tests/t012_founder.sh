@@ -1,5 +1,5 @@
 #!/bin/bash
-RUST="$(realpath "$1")"; TS="$(realpath "$2")"
+RUST="$(realpath "$1")"
 
 # 鍵ペア生成
 A_KEYS=$($RUST keygen)
@@ -42,21 +42,3 @@ EOF
 )
 echo "$R_REJECT_DOWN" | grep -qiE 'error.*reason' || { rm -rf "$R_DIR"; exit 1; }
 
-# T-F08: TS と出力一致
-T_DIR=$(mktemp -d)
-(cd "$T_DIR" && "$TS" init --participant alice --secret-key "$A_SEC" > /dev/null 2>&1)
-
-T_OUT=$(cd "$T_DIR" && cat <<EOF | "$TS" pipeline 2>&1
-write src/main.ts 1 10 alice $A_SEC "hello"
-write src/components/Button.tsx 1 5 bob $B_SEC "button"
-founder .
-founder src/
-founder src/components/
-EOF
-)
-
-R_NORM=$(echo "$R_OUT" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g')
-T_NORM=$(echo "$T_OUT" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g')
-[ "$R_NORM" = "$T_NORM" ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
-
-rm -rf "$R_DIR" "$T_DIR"

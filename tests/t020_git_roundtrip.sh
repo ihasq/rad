@@ -1,6 +1,5 @@
 #!/bin/bash
 RUST="$(realpath "$1")"
-TS="$(realpath "$2")"
 
 # T-GR01: git repo → rad import → rad export → git diff が空
 R_DIR=$(mktemp -d)
@@ -24,7 +23,6 @@ echo "$CHAIN_OUTPUT" | grep -q 'op-' || { rm -rf "$R_DIR"; exit 1; }
 
 rm -rf "$R_DIR"
 
-# T-GR04: TS でも roundtrip が動作する
 T_DIR=$(mktemp -d)
 bash "$SCRIPT_DIR/helpers/create_git_repo.sh" "$T_DIR" > /dev/null 2>&1
 

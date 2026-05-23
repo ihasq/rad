@@ -2,7 +2,7 @@
 # t030_file_founder: ファイルレベルの Founder 追跡テスト
 
 RUST="$1"
-TS="$2"
+
 
 # T-FF01: ファイルの file founder 追跡（src/main.ts → alice, src/utils.ts → bob）
 # T-FF02: 同一ファイルの2回目の write で file founder が変わらない
@@ -78,24 +78,3 @@ fi
 
 rm -rf "$R_DIR"
 
-# TS テスト（同一ロジック）
-if [ -n "$TS" ]; then
-  T_DIR=$(mktemp -d)
-  (cd "$T_DIR" && "$TS" init --participant alice --secret-key "$A_SEC" > /dev/null 2>&1)
-
-  T_OUT=$(cd "$T_DIR" && cat <<EOF | "$TS" pipeline 2>&1
-write src/main.ts 1 10 alice $A_SEC "hello world"
-file-founder src/main.ts
-EOF
-  )
-
-  if ! echo "$T_OUT" | grep -q "alice"; then
-    echo "  ❌ T-FF06: TS の file-founder 出力が Rust と一致しない"
-    rm -rf "$T_DIR"
-    exit 1
-  fi
-
-  rm -rf "$T_DIR"
-fi
-
-echo "  ✅ t030_file_founder"

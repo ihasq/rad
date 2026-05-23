@@ -1,5 +1,5 @@
 #!/bin/bash
-RUST="$(realpath "$1")"; TS="$(realpath "$2")"
+RUST="$(realpath "$1")"
 
 # 鍵ペア生成
 A_KEYS=$($RUST keygen)
@@ -32,23 +32,4 @@ grep -qi 'accepted' "$R_DIR/.rad/oplog.json" || { rm -rf "$R_DIR"; exit 1; }
 # (既に write で region が登録されている)
 grep -q 'src/main.ts' "$R_DIR/.rad/regions.json" || { rm -rf "$R_DIR"; exit 1; }
 
-# TS: 同一手順
-T_DIR=$(mktemp -d)
-(cd "$T_DIR" && "$TS" init --participant alice --secret-key "$A_SEC" > /dev/null 2>&1)
-(cd "$T_DIR" && echo "write src/main.ts 1 10 alice $A_SEC \"v1\"" | "$TS" pipeline > /dev/null 2>&1)
-
-# T-S06: セッション間で chain 表示
-T_CHAIN=$(cd "$T_DIR" && echo 'chain src/main.ts 1 10' | "$TS" pipeline 2>&1)
-echo "$T_CHAIN" | grep -q 'v1' || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
-
-# T-S08: chain 出力一致
-R_NORM=$(echo "$R_CHAIN" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g' | sed 's/t=[0-9]*/t=T/g')
-T_NORM=$(echo "$T_CHAIN" | sed 's/op-[a-zA-Z0-9_-]*/op-ID/g' | sed 's/t=[0-9]*/t=T/g')
-[ "$R_NORM" = "$T_NORM" ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
-
-# T-S07: .rad/ ディレクトリ構造一致
-R_STRUCTURE=$(cd "$R_DIR" && find .rad -type f | sort)
-T_STRUCTURE=$(cd "$T_DIR" && find .rad -type f | sort)
-[ "$R_STRUCTURE" = "$T_STRUCTURE" ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
-
-rm -rf "$R_DIR" "$T_DIR"
+rm -rf "$R_DIR"

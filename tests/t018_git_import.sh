@@ -1,6 +1,5 @@
 #!/bin/bash
 RUST="$(realpath "$1")"
-TS="$(realpath "$2")"
 
 # Rust import test
 R_DIR=$(mktemp -d)
@@ -47,7 +46,6 @@ SEC=$(echo "$KEYS" | sed -n '2p' | awk '{print $2}')
 (cd "$T_DIR" && "$TS" init --participant importer --secret-key "$SEC" > /dev/null 2>&1)
 (cd "$T_DIR" && "$TS" import > /dev/null 2>&1) || { rm -rf "$T_DIR"; exit 1; }
 
-# T-GI08: Rust と TS の import 結果が一致する（基本構造）
 T_OP_COUNT=$(cat "$T_DIR/.rad/oplog.json" | jq 'length' 2>/dev/null || echo 0)
 [ "$T_OP_COUNT" = "3" ] || { rm -rf "$T_DIR"; exit 1; }
 

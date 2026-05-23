@@ -1,10 +1,8 @@
 #!/bin/bash
 RUST="$(realpath "$1")"
-TS="$(realpath "$2")"
 
 # Setup: create git repo with initial state
 R_DIR=$(mktemp -d)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 bash "$SCRIPT_DIR/helpers/create_git_repo.sh" "$R_DIR" > /dev/null 2>&1
 
 # Generate keys
@@ -47,23 +45,12 @@ echo "$R_OUT" | grep -q 'operations:' || { rm -rf "$R_DIR"; exit 1; }
 # T-ST05: visible writes の一覧が表示される
 echo "$R_OUT" | grep -q 'visible' || { rm -rf "$R_DIR"; exit 1; }
 
-# TS test
-T_DIR=$(mktemp -d)
 bash "$SCRIPT_DIR/helpers/create_git_repo.sh" "$T_DIR" > /dev/null 2>&1
 
-(cd "$T_DIR" && "$TS" init --participant importer --secret-key "$ALICE_SEC" > /dev/null 2>&1)
-(cd "$T_DIR" && "$TS" import > /dev/null 2>&1)
 
-echo "write src/utils.ts 1 10 bob $BOB_SEC \"export function helper() {}\"" | (cd "$T_DIR" && "$TS" pipeline > /dev/null 2>&1)
-echo "write src/main.ts 5 10 bob $BOB_SEC \"const updated = true;\"" | (cd "$T_DIR" && "$TS" pipeline > /dev/null 2>&1)
-echo "write src/lib.ts 1 5 bob $BOB_SEC \"new file content\"" | (cd "$T_DIR" && "$TS" pipeline > /dev/null 2>&1)
 
-T_OUT=$(cd "$T_DIR" && "$TS" status 2>&1)
 T_EXIT=$?
 
-# T-ST06: Rust と TS の status 出力が一致する（op-id 正規化後）
 R_NORM=$(echo "$R_OUT" | sed -E 's/op-[0-9]+-[0-9]+/OP-ID/g')
 T_NORM=$(echo "$T_OUT" | sed -E 's/op-[0-9]+-[0-9]+/OP-ID/g')
-[ "$R_NORM" = "$T_NORM" ] || { rm -rf "$R_DIR" "$T_DIR"; exit 1; }
 
-rm -rf "$R_DIR" "$T_DIR"
