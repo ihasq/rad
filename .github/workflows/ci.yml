@@ -15,5 +15,16 @@ jobs:
         run: cd rust && cargo build -p rad-wasm --target wasm32-unknown-unknown --release
       - name: Build TypeScript (includes WASM copy)
         run: cd ts && bun install && bash build.sh
+      - name: Debug relay
+        run: |
+          echo "=== WASM file ==="
+          ls -lh ts/dist/rad_wasm.wasm 2>&1 || echo "WASM NOT FOUND"
+          ls -lh rust/target/wasm32-unknown-unknown/release/rad_wasm.wasm 2>&1 || echo "WASM NOT FOUND in rust target"
+          echo "=== TS binary ==="
+          ls -lh ts/dist/rad 2>&1 || echo "TS binary NOT FOUND"
+          echo "=== Test t015 verbose ==="
+          RUST_BIN=$(readlink -f rust/target/release/rad)
+          TS_BIN=$(readlink -f ts/dist/rad)
+          bash -x tests/t015_relay.sh $RUST_BIN $TS_BIN 2>&1 | head -50
       - name: Run shared tests
         run: bash tests/runner.sh
